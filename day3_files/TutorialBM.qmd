@@ -1,0 +1,464 @@
+---
+title: "Tutorial on Stochastic Block Models"
+subtitle: "April 2024"
+author: "Econet group"
+date: "04/24/2024"
+output:
+  rmarkdown::html_vignette:
+  toc: true
+toc_depth: 4
+bibliography: references.bib
+link-citations: true
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+collapse = TRUE,
+comment = "#>"
+)
+```
+
+```{r wd, eval = TRUE, echo = FALSE}
+
+```
+
+
+# 0.Requirements
+
+This tutorial illustrates the use of block models for the analysis of (ecological) network.
+Is is mainly based on the vignette of the package `sbm`.
+The package is on the CRAN.
+Its development version is on [Github](https://github.com/GrossSBM/sbm).
+
+```{r install, message=FALSE, warning=FALSE, eval=FALSE, echo = TRUE}
+install.packages("sbm")
+install.packages("GGally") # To plot networks
+install.packages('network')
+install.packages('RColorBrewer') # to have nice colors
+install.packages('knitr') # to plot nice tables
+```
+
+```{r}
+
+```
+
+The packages required for the analysis are `sbm` plus some others for data manipulation and representation:
+
+```{r setup, message=FALSE, warning=FALSE}
+library(sbm)
+library(ggplot2)
+library(network)
+library(GGally)
+library(RColorBrewer)
+library(knitr)
+```
+
+# 1. Simulating network data
+
+Let us first simulate networks using the `sbm` package.
+
+## 1.A. Community network
+
+First define the parameters.
+
+```{r parameter communities}
+K = 3;  # nb of blocks
+nbNodes  <- 50 # nb of vertices 
+blockProp <- c(.25, 0.5 ,.25) # group proportions
+connectParam <- list(mean = diag(.4, 3) + 0.05) # connectivity matrix: affiliation network
+```
+
+We can now simulate with the `sampleSimpleSBM` function.
+
+```{r simulation  communities}
+mySampler <- sampleSimpleSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'bernoulli',directed = TRUE, dimLabels = 'Species')
+mySampler
+```
+
+We represent the data using either the adjacency matrix or the graphe representation.
+
+```{r communities plot}
+colSet <- RColorBrewer::brewer.pal(n = 8, name = "Set2") 
+GGally::ggnet2(mySampler$networkData,label = TRUE,color=colSet[1])
+
+plotOptions <- list(colNames = TRUE, rowNames = TRUE)
+sbm::plotMyMatrix(mySampler$networkData,dimLabels = list(row = "species", col = "species"),plotOptions = plotOptions)
+```
+
+A few modification as to be done if we want to highlight the blocs.
+
+```{r plot commu with colors}
+U <- order(mySampler$memberships)
+Z <- mySampler$memberships[U]
+myMat <- mySampler$networkData[U,U]
+net = network(myMat, directed = TRUE)
+my_color_nodes_col <- my_color_nodes <- rep(colSet[1],nbNodes)
+for (k in 2:K){
+  my_color_nodes[nbNodes-which(Z==k) + 1] <- colSet[k]
+  my_color_nodes_col[which(Z==k)] <- colSet[k]
+}
+ggnet2(net,node.color =  Z, palette = "Set2",label = TRUE,arrow.size = 6, arrow.gap = 0.017,label.size = 3)
+sbm::plotMyMatrix(myMat,dimLabels = list(row = "species", col = "species"),plotOptions = plotOptions)+ theme(axis.text.x = element_text(color=my_color_nodes_col),axis.text.y = element_text(color=my_color_nodes))
+```
+
+
+**Exercice** Modify the structure by choosing other parameters and compute the statistics that you learned the previous days. Use `igraph` to plot your new networks. For instance, you may try to simulate a foodweb with 5 trophic levels.
+
+## 1.B. Bipartite networks
+
+**Exercice** Use the function `sampleBipartiteSBM` to simulate a weighted (counts) bipartite network with the following parameters.
+
+```{r parameter bipartite}
+K = 3;  # nb of blocks
+L = 4
+nbNodes  <- c(50,80) # nb of vertices 
+blockProp <- list(row = c(.25, 0.5 ,.25),col=c(0.1,0.3,0.4,0.2)) # group proportions
+means <- matrix(rbinom(K*L, 30, 0.25), K, L)  # connectivity matrix
+means[3,2] = means[1,4] = 0
+connectParam <- list(mean = means)
+
+```
+```{r, eval = FALSE, echo = FALSE }
+
+mySampler2 <- sampleBipartiteSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'poisson', dimLabels = c('books','readers'))
+mySampler
+```
+
+
+
+# 2. Analyzing an ecological data set
+
+## 2.A. The data set: antagonistic tree/fungus interaction network
+
+We consider the fungus-tree interaction network studied by @tree_fungus_network, available with the package `sbm` :
+
+```{r import dataset}
+data("fungusTreeNetwork")
+str(fungusTreeNetwork,  max.level = 1)
+```
+
+
+This data set provides information about $154$ fungi sampled on $51$ tree species.
+It is a list with the following entries:
+
+-   `tree_names` : list of the tree species names
+-   `fungus_names`: list of the fungus species names
+-   `tree_tree` : weighted tree-tree interactions (number of common fungal species two tree species host)
+-   `fungus_tree` : binary fungus-tree interactions
+-   `covar_tree` : covariates associated to pairs of trees (namely genetic, taxonomic and geographic distances)
+
+We first consider the tree-tree interactions resulting into a Simple Network.
+Then we consider the bipartite network between trees and fungi.
+
+## 2.B. Analysis of the tree/tree data
+
+### 2.B.1 Tree-tree binary interaction networks
+
+We first consider the binary network where an edge is drawn between two trees when they do share a least one common fungi:
+
+```{r tree_tree_binary network}
+tree_tree_binary <- 1 * (fungusTreeNetwork$tree_tree != 0)
+```
+
+The simple function `plotMyMatrix` can be use to represent simple or bipartite SBM:
+
+```{r tree_tree_binary network plot data}
+plotMyMatrix(tree_tree_binary, dimLabels = list(row = 'tree', col = 'tree'))
+```
+
+We look for some latent structure of the network by adjusting a simple SBM with the function `estimateSimpleSBM`.
+We assume the our matrix is the realisation of the SBM: \begin{align*}
+ (Z_i) \text{ i.i.d.} \qquad & Z_i \sim \mathcal{M}(1, \pi) \\
+ (Y_{ij}) \text{ indep.} \mid (Z_i) \qquad & (Y_{ij} \mid Z_i=k, Z_j = \ell) \sim \mathcal{B}(\alpha_{k\ell})
+\end{align*} and infer this model with `sbm` (used package : `blockmodels`).
+Note that `simpleSBM` refers to standard networks (w.r.t. bipartite)
+
+
+
+```{r simpleSBM print,eval = TRUE, echo = TRUE}
+mySimpleSBM <- tree_tree_binary %>%
+  estimateSimpleSBM("bernoulli", 
+                    dimLabels ='tree', 
+                    estimOptions = list(verbosity = 2, plot=FALSE))
+```
+
+![ICL for the Binary SBM](ICL_tree_bin.png)
+
+Once fitted, the user can manipulate the fitted model by accessing the various fields and methods enjoyed by the class `simpleSBMfit`.
+Most important fields and methods are recalled to the user via the `show` method:
+
+```{r simpleSBMfit}
+class(mySimpleSBM)
+```
+
+For instance,
+
+```{r impleSBMfit fields}
+mySimpleSBM$nbBlocks
+mySimpleSBM$nbNodes
+mySimpleSBM$nbCovariates
+```
+
+The plot method is available as a S3 or R6 method.
+The default represents the network data reordered according to the memberships estimated in the SBM
+
+```{r simpleSBMfit plot1}
+plot(mySimpleSBM, type = "data", dimLabels = list(row = 'tree', col = 'tree'))
+```
+
+One can also plot the expected network which, in case of the Bernoulli model, corresponds to the probability of connection between any pair of nodes in the network.
+
+```{r simpleSBMfit plot2}
+plot(mySimpleSBM, type = "expected",estimOptions=list(legend=TRUE))
+```
+
+
+
+**About model selection and choice of the number of blocks** 
+
+During the estimation, a certain range of models are explored corresponding to different number of blocks.
+By default, the best model in terms of Integrated Classification Likelihood is sent back.
+IN fact, all the model are stored internally.
+The user can have a quick glance at them via the `$storedModels` field:
+
+```{r simpleSBM storedModel}
+mySimpleSBM$storedModels %>% kable()
+```
+
+We can then what models are competitive in terms of model selection by checking the ICL
+
+```{r simpleSBM ICL}
+mySimpleSBM$storedModels %>%  
+  ggplot() + 
+  aes(x = nbBlocks, y = ICL) + geom_line() + geom_point(alpha = 0.5)
+```
+
+The 4-block model could have been a good choice too, in place of the 5-block model.
+The user can update the current `simpleSBMfit` thanks to the the `setModel` method:
+
+```{r simpleSBMfit changeModel}
+mySimpleSBM$setModel(4)
+mySimpleSBM$nbBlocks
+mySimpleSBM$plot(type = 'expected')
+```
+
+Going back to the best model
+
+```{r simpleSBMfit going back to true model}
+mySimpleSBM$setModel(5)
+```
+
+
+
+### 2.B.3  Analysis of the weighted interaction network
+
+Instead of considering the binary network tree-tree we may consider the weighted network where the link between two trees is the number of fungi they share.
+
+We plot the matrix with function `plotMyMatrix`:
+
+```{r tree_tree network plot data}
+tree_tree <- fungusTreeNetwork$tree_tree
+plotMyMatrix(tree_tree, dimLabels = list(row = 'tree', col = 'tree'))
+```
+
+Here again, we look for some latent structure of the network by adjusting a simple SBM with the function `estimateSimpleSBM`, considering a Poisson distribution on the edges.
+
+```{=tex}
+\begin{align*}
+ (Z_i) \text{ i.i.d.} \qquad & Z_i \sim \mathcal{M}(1, \pi) \\
+ (Y_{ij}) \text{ indep.} \mid (Z_i) \qquad & (Y_{ij} \mid Z_i=k, Z_j = \ell) \sim \mathcal{P}(\exp(\alpha_{kl})) = \mathcal{P}(\lambda_{kl})
+\end{align*}
+```
+```{r simpleSBM Poisson, eval   = TRUE, echo = TRUE}
+mySimpleSBMPoisson <- tree_tree %>%
+  estimateSimpleSBM("poisson", directed = FALSE,
+                    estimOptions = list(verbosity = 2 , plot = FALSE),
+                    dimLabels = c('tree'))
+```
+
+![ICL for the Poisson SBM](ICL_tree_poisson.png)
+
+Once fitted, the user can manipulate the fitted model by accessing the various fields and methods enjoyed by the class `simpleSBMfit`.
+Most important fields and methods are recalled to the user via the `show` method:
+
+```{r simpleSBMfitPoisson}
+class(mySimpleSBMPoisson)
+mySimpleSBMPoisson
+```
+
+For instance,
+
+```{r impleSBMfitPoison fields}
+mySimpleSBMPoisson$nbBlocks
+mySimpleSBMPoisson$nbNodes
+mySimpleSBMPoisson$nbCovariates
+```
+
+We now plot the matrix reordered according to the memberships estimated in the SBM
+
+```{r simpleSBMfitPoisson plot1}
+plot(mySimpleSBMPoisson, type = "data")
+```
+
+One can also plot the expected network which, in case of the Poisson model, corresponds to the expectation of connection between any pair of nodes in the network.
+
+```{r simpleSBMfitPoisson plot2}
+plot(mySimpleSBMPoisson, type = "expected")
+```
+
+
+The composition of the clusters/blocks are given by :
+
+```{r list names blocks Poisson,  echo=TRUE, eval = TRUE}
+lapply(1:mySimpleSBMPoisson$nbBlocks,
+       function(q){fungusTreeNetwork$tree_names[mySimpleSBMPoisson$memberships == q]})
+```
+
+We are interested in comparing the two clusterings.
+To do so we use the alluvial flow plots.
+
+```{r alluvial, echo=TRUE,eval=TRUE}
+listMemberships <- list(binarySBM = mySimpleSBM$memberships)
+listMemberships$weightSBM <- mySimpleSBMPoisson$memberships
+P <- plotAlluvial(listMemberships)
+```
+
+
+
+### 2.B.4 Introduction of covariates
+
+We have on each pair of trees 3 covariates, namely the genetic distance, the taxonomic distance and the geographic distance.
+Each covariate has to be introduced as a matrix: $X^k_{ij}$ corresponds to the value of the $k$-th covariate describing the couple $(i,j)$.
+
+We can also use the `sbm` package to estimate the parameters of the SBM with covariates.
+
+```{=tex}
+\begin{align*}
+ (Z_i) \text{ i.i.d.} \qquad & Z_i \sim \mathcal{M}(1, \pi) \\
+ (Y_{ij}) \text{ indep.} \mid (Z_i) \qquad & (Y_{ij} \mid Z_i=k, Z_j = \ell) \sim \mathcal{P}(\exp(\alpha_{kl} + x_{ij}^\intercal \theta)) = \mathcal{P}(\lambda_{kl}\exp(x_{ij}^\intercal \theta))
+\end{align*}
+```
+```{r covar SBM,echo= TRUE,eval= TRUE}
+mySimpleSBMCov<- estimateSimpleSBM(
+  netMat = as.matrix(tree_tree),
+  model = 'poisson',
+  directed =FALSE,
+  dimLabels =c('tree'), 
+  covariates  = fungusTreeNetwork$covar_tree,
+  estimOptions = list(verbosity = 0))
+```
+
+![ICL for the Poisson  SBM with covariates](ICL_tree_cov.png)
+
+-   We select the best number of clusters (with respect to the ICL criteria)
+
+```{r select SBM covar, echo=TRUE, eval = TRUE}
+mySimpleSBMCov$nbBlocks
+```
+
+-   We can now extract the parameters of interest, namely ($\lambda$, $\pi$) and the clustering of the nodes.
+
+```{r extract param SBM poisson covar, echo=TRUE, eval = TRUE}
+mySimpleSBMCov$connnectParam
+mySimpleSBMCov$blockProp
+mySimpleSBMCov$memberships
+mySimpleSBMCov$covarParam
+```
+
+-   The composition of the clusters/blocks are given by:\
+
+```{r list names blocks poisson cov,  echo=TRUE, eval = TRUE}
+lapply(1:mySimpleSBMCov$nbBlocks,function(q){fungusTreeNetwork$tree_names[mySimpleSBMCov$memberships == q]})
+```
+
+We are interested in comparing the three cluterings.
+To do so we use the alluvial flow plots
+
+```{r alluvial cov, echo=TRUE,eval=TRUE}
+listMemberships <- list(binary = mySimpleSBM$memberships)
+listMemberships$weighted <- mySimpleSBMPoisson$memberships
+listMemberships$weightedCov <- mySimpleSBMCov$memberships
+plotAlluvial(listMemberships)
+```
+
+## 2.C Analysis of the tree/fungi data
+
+We now analyze the bipartite tree/fungi interactions.
+The incidence matrix can be plotted with the function \code{plotMyMatrix}
+
+```{r plot incidence}
+plotMyMatrix(fungusTreeNetwork$fungus_tree, dimLabels=list(row = 'fungis',col = 'tree'))
+```
+
+We set the following model:
+
+```{=tex}
+\begin{align*}
+ (Z^R_i) \text{ i.i.d.} \qquad & Z^R_i \sim \mathcal{M}(1, \pi^R) \\
+  (Z^C_i) \text{ i.i.d.} \qquad & Z^C_i \sim \mathcal{M}(1, \pi^C) \\
+
+ (Y_{ij}) \text{ indep.} \mid (Z^R_i, Z^C_j) \qquad & (Y_{ij} \mid Z^R_i=k, Z^C_j = \ell) \sim \mathcal{B}(\alpha_{k\ell})
+\end{align*}
+```
+
+```{r tree_fungi_bipartite network, eval=TRUE, echo = TRUE}
+myBipartiteSBM <- estimateBipartiteSBM(
+  netMat = as.matrix(fungusTreeNetwork$fungus_tree),
+  model = 'bernoulli',
+  dimLabels=c(row = 'fungis',col = 'tree'),
+  estimOptions = list(verbosity = 1,plot = FALSE))
+```
+
+```{r bipartite.sbm fields}
+myBipartiteSBM$nbNodes
+myBipartiteSBM$nbBlocks
+myBipartiteSBM$connectParam
+```
+
+We can now plot the reorganized matrix.
+
+```{r plot bipartite estim}
+plot(myBipartiteSBM, type = "data")
+```
+
+```{r plot bipartite expect}
+plot(myBipartiteSBM, type = "expected")
+```
+
+
+
+
+# 3.  The Shiny application
+
+We (T. Vanrenterghem (INRAE))  are developing a Shiny application to help people use our package. 
+
+
+  - You can either use it online [here](https://shiny.migale.inrae.fr/app/ShinySBM).
+  - Or install it on your machine
+
+```{r install shiny, eval = FALSE}
+remotes::install_github("Jo-Theo/shinySbm")
+shinySbm::run_app()
+``` 
+
+**Exercice** 
+Simulate your own network and perform the inference. Are you able to recover the blocks? 
+
+
+
+**Exercice** Test the Shiny app with your own data set or in the one of the @thompson2003impacts paper (available in the colSBM package).
+```{r run On foddweb, eval = FALSE}
+remotes::install_github("Chabert-Liddell/colSBM")
+library(colSBM)
+data("foodwebs")
+write.csv(foodwebs[[1]],file="myNetwork.csv") 
+```
+
+
+
+
+
+## References

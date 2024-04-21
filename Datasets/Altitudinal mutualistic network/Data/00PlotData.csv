@@ -1,0 +1,54 @@
+"plot","habitat","habitat_description","lu","elev","map","mat"
+"cof1","cof","coffee plantation","disturbed",1303,1300.8,19.06
+"cof2","cof","coffee plantation","disturbed",1353,1518.03,19.59
+"cof3","cof","coffee plantation","disturbed",1288,1296.51,20.12
+"cof4","cof","coffee plantation","disturbed",1134,1115.15,22.6
+"cof6","cof","coffee plantation","disturbed",1516,1611,18.56
+"fer0","fer","forest erica","undisturbed",3956,1393.13,4.47
+"fer5","fer","forest erica","undisturbed",3995,1372.48,4.38
+"flm1","flm","forest lower montane","undisturbed",1916,2304.79,15.27
+"flm2","flm","forest lower montane","undisturbed",1833,2189.22,15.17
+"flm3","flm","forest lower montane","undisturbed",1780,2173.55,16.28
+"flm4","flm","forest lower montane","undisturbed",1830,2249.7,16.46
+"flm6","flm","forest lower montane","undisturbed",2054,2088.68,14.37
+"foc1","foc","forest ocotea","undisturbed",2150,2503.1,12.07
+"foc2","foc","forest ocotea","undisturbed",2238,2552.08,12.12
+"foc3","foc","forest ocotea","undisturbed",2499,2480.64,11.66
+"foc4","foc","forest ocotea","undisturbed",2581,2286.95,11.61
+"foc5","foc","forest ocotea","undisturbed",2741,2116.81,9.88
+"fod1","fod","forest ocotea disturbed","disturbed",2185,2396.03,13
+"fod2","fod","forest ocotea disturbed","disturbed",2495,2202.09,11.02
+"fod4","fod","forest ocotea disturbed","disturbed",2568,2289.59,11.07
+"fod5","fod","forest ocotea disturbed","disturbed",2422,2413.31,11.87
+"fpd2","fpd","forest podocarpus disturbed","disturbed",2996,1936.32,9.01
+"fpd3","fpd","forest podocarpus disturbed","disturbed",2792,2116.01,9.72
+"fpd4","fpd","forest podocarpus disturbed","disturbed",2819,2097.9,9.79
+"fpo1","fpo","forest podocarpus","undisturbed",2833,2039.28,9.42
+"fpo2","fpo","forest podocarpus","undisturbed",2937,2018.97,9.27
+"fpo3","fpo","forest podocarpus","undisturbed",3009,1946.3,8.96
+"fpo4","fpo","forest podocarpus","undisturbed",2753,2136.04,9.92
+"fpo5","fpo","forest podocarpus","undisturbed",2825,2037.86,10.33
+"gra0","gra","grassland","disturbed",1732,2024.49,16.99
+"gra1","gra","grassland","disturbed",1742,2021.98,16.52
+"gra2","gra","grassland","disturbed",1754,1904.51,17.64
+"gra3","gra","grassland","disturbed",1474,1504.93,19.18
+"gra4","gra","grassland","disturbed",1314,1369.38,20.39
+"gra5","gra","grassland","disturbed",1266,1247.62,20.82
+"gra6","gra","grassland","disturbed",1384,1450.29,21.64
+"hel1","hel","alpine helichrysum vegetation","undisturbed",3849,1411.07,5.33
+"hel3","hel","alpine helichrysum vegetation","undisturbed",4283,1287.43,2.9
+"hel4","hel","alpine helichrysum vegetation","undisturbed",4396,1247.04,4.57
+"hom1","hom","chagga homegarden","disturbed",1658,1939.49,17.03
+"hom2","hom","chagga homegarden","disturbed",1171,1152.21,20.3
+"hom3","hom","chagga homegarden","disturbed",1824,2244.09,16.23
+"hom4","hom","chagga homegarden","disturbed",1300,1341.6,20.75
+"hom5","hom","chagga homegarden","disturbed",1530,1604.28,19.22
+"mai1","mai","maize field","disturbed",1008,784.85,22.56
+"mai2","mai","maize field","disturbed",872,590.29,24.78
+"mai4","mai","maize field","disturbed",962,714.43,23.64
+"mai5","mai","maize field","disturbed",953,693.4,23
+"sav1","sav","savannah","undisturbed",883,657.02,24.58
+"sav2","sav","savannah","undisturbed",1028,821.72,24.18
+"sav3","sav","savannah","undisturbed",1139,956.77,22.32
+"sav4","sav","savannah","undisturbed",963,706.97,23.86
+"sav5","sav","savannah","undisturbed",943,678.5,23.67

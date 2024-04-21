@@ -1,0 +1,79 @@
+---
+title: "Tutorial on Multipartite block models"
+subtitle: "April 2024"
+author: "Econet group"
+date: "04/24/2024"
+output:
+  rmarkdown::html_vignette:
+  toc: true
+toc_depth: 4
+bibliography: references.bib
+link-citations: true
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+collapse = TRUE,
+comment = "#>"
+)
+```
+
+
+
+
+# 0.Requirements
+
+This tutorial illustrates the use of block models for the analysis of (ecological) multipartite network.
+Is is mainly based on a [vignette](https://grosssbm.github.io/sbm/articles/Multipartite_EcologicalNetwork.html) of the package `sbm` .
+The package is on the CRAN. Its development version is on [Github](https://github.com/GrossSBM/sbm). It as been installed earlier during the week. 
+
+```{r install, message=FALSE, warning=FALSE, eval=FALSE, echo = TRUE}
+install.packages("sbm")
+```
+
+
+
+
+```{r setup, message=FALSE, warning=FALSE}
+library(sbm)
+library(ggplot2)
+```
+
+# 1. What if I have more than 2 types of nodes? 
+
+The sbm package is able to handle multipartite networks, meaning that they involve more that two types of nodes and intra and inter groups connections. 
+We analyse the data from @Dattilo with the method proposed by  @multipartite. 
+
+```{r }
+data(multipartiteEcologicalNetwork)
+Net <- multipartiteEcologicalNetwork
+type = "bipartite"
+model = "bernoulli"
+directed = FALSE
+PlantFlovis <- defineSBM(Net$Inc_plant_flovis, model, type, directed, dimLabels = c("Plants",
+    "Flovis"))
+PlantAnt <- defineSBM(Net$Inc_plant_ant, model, type, directed, dimLabels = c("Plants",
+    "Ants"))
+PlantBird <- defineSBM(Net$Inc_plant_bird, model, type, directed, dimLabels = c("Plants",
+    "Birds"))
+plotMyMultipartiteMatrix(list(PlantFlovis, PlantAnt, PlantBird))
+``` 
+
+We can also find block of species 
+```{r }
+data(multipartiteEcologicalNetwork)
+estimOptions = list(initBM = FALSE)
+listSBM <- list(PlantFlovis, PlantAnt, PlantBird)
+myMSBM <- estimateMultipartiteSBM(listSBM, estimOptions)
+```
+
+```{r }
+plot(myMSBM) 
+```
+
+These options are not included in the Shiny application yet.
+
+## References

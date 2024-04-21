@@ -1,0 +1,11 @@
+Dataset used in the article "Seasonal trajectories of plant-pollinator networks differ along an urbanization gradient".
+
+This file includes plant-pollinator interactions sampled in each site (1-12) at each sampling event (6 events).
+Each row is a single 'insect pollinator X plant' interaction.
+The file is .txt with tab-separated values.
+
+Authors: Alessandro Fisogni, Nina Hautekèete, Yves Piquot, Marion Brun, Cédric Vanappelghem, Marc Ohlmann, Magalie Franchomme, Christelle Hinnewinkel, François Massol
+
+Corresponding author: Alessandro Fisogni
+e-mail: a.fisogni@gmail.com
+Orcid iD: 0000-0001-6179-2767
