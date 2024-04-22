@@ -1,0 +1,346 @@
+---
+title: "Introduction to igraph"
+author: "EcoNet Group"
+date: ""
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: inline
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+The goal is to familiarize with the `R` package `igraph`.
+
+Official website: http://igraph.org/r/
+
+Be careful: `igraph` has also been developed in C and Python. If you do a search on the web you might arrive on http://igraph.org/c/ or http://igraph.org/python/  rather than  http://igraph.org/r/
+
+If you want to go further with `igraph` you can also have a look at that tutorial: http://kateto.net/networks-r-igraph
+
+
+###  `igraph` package  
+Install the package `igraph` and load the library
+
+```{r, eval=F}
+install.packages("igraph")
+```
+```{r}
+library(igraph)
+```
+## 1. Create a toy graph by hand
+### 1.1. Giving the list of edges
+There are 2 possible formats: either a vector that concatenates the indexes of linked nodes or a matrix with 2 rows. 
+
+```{r}
+EdgeList1 <- c(1,2, 1,3, 2,3, 3,5, 2,4, 4,5, 5,6, 4,6, 4,7, 6,7, 3,4)
+EdgeList2 <- matrix(EdgeList1,nrow=2)
+g1 <- graph(edges=EdgeList1, directed=FALSE)
+g2 <- graph(edges=EdgeList2, directed=FALSE)
+par(mfrow=c(1,2))
+plot(g1)
+plot(g2)
+```
+
+You obtain an object with class `igraph`:  
+```{r}
+class(g1)
+```
+
+You can specify the number of nodes $n$ (in particular when there are isolated nodes):
+```{r}
+g3 <- graph(edges=EdgeList1, n=9, directed=FALSE)
+plot(g3)
+```
+
+Nodes are not necessarily of the numeric type:
+```{r}
+EdgeListNames <- c("Eric", "Erwan", "Erwan","Ana")
+g4 <- graph(edges=EdgeListNames)
+plot(g4)
+# Note that by default, the graph is directed 
+```
+
+With isolated nodes:
+```{r}
+g5 <- graph(edges=EdgeListNames, isolates="Paul")
+plot(g5)
+```
+
+It could be useful to start with a particular graph, specifying the number of node
+```{r}
+g0 <- make_empty_graph(20)
+gf <- make_full_graph(20)
+gr <- make_ring(20)
+gl <- make_lattice(c(4,6)) # here you input dimension
+gs <- make_star(10)
+par(mfrow=c(2,3))
+plot(g0)
+plot(gf)
+plot(gr)
+plot(gl)
+plot(gs)
+```
+
+
+
+
+### 1.2. By reading a `data.frame` structure containing the list of edges:
+
+
+Dataset (csv format) gathers friendship relationships  among high-school students. It's in the repo but you may also download it  from: http://www.sociopatterns.org/datasets/high-school-contact-and-friendship-networks/ 
+ 
+```{r}
+friends <- read.table(file='day1_files/Toy_Data/Friendship-network_data_2013.csv')
+head(friends)
+gfriends <- graph_from_data_frame(friends, directed=TRUE) 
+gfriends
+class(gfriends)
+plot(gfriends)
+```
+
+You can also import other `data.frame`; try with  a dataset containing information about media: the first file `Dataset1-Media-Example-NODES.csv` contains information about the nodes and the second one `Dataset1-Media-Example-EDGES.csv` contains the list of interactions (these are valued and of several different types):
+
+
+```{r}
+nodes <- read.csv("day1_files/Toy_Data/Dataset1-Media-Example-NODES.csv", header=TRUE, as.is=TRUE)
+head(nodes)
+links <- read.csv("day1_files/Toy_Data/Dataset1-Media-Example-EDGES.csv", header=TRUE, as.is=TRUE)
+head(links)
+net <- graph_from_data_frame(d=links, vertices=nodes, directed=TRUE) 
+class(net)
+plot(net)
+```
+
+### 1.3. Using a file whose format is adapted to  `igraph`:
+
+Function `read_graph` is adapted to certain graph formats:
+
+```{r, eval=F}
+# usage: 
+# This is not a command to be run !!!!
+read_graph(file, format = c("edgelist", "pajek", "ncol", "lgl", "graphml", "dimacs", "graphdb", "gml", "dl"), ...)
+```
+
+ 
+The file lesmis.gml contains the weighted network of co-appearances of characters in Victor Hugo's novel *Les Miserables*.  Nodes represent characters as indicated by the labels and edges connect any pair of characters that appear in the same chapter of the book.  The values on the edges are the number of such co-appearances. The file is in the repo or may be doawloaded from http://www-personal.umich.edu/~mejn/netdata/
+ 
+```{r}
+miserab <- read_graph(file='day1_files/Toy_Data/lesmis.gml', format="gml") 
+class(miserab)
+plot(miserab)
+```
+
+
+### 1.4. Using an adjacency matrix 
+
+```{r}
+A <- matrix(c(0,0,0,0,0,0,1,1,0,1,0,1,0,1,1,0), 4, 4)
+A
+plot(graph_from_adjacency_matrix(A, mode='undirected'))
+```
+
+
+### 1.5 By simulation 
+If you want to create toy graphs to play with, you can use the funtion `sample_gnm` specifying the number of nodes `n` and the number of edges `m` (the Erdös-Rényi model will be described soon).
+
+
+```{r}
+set.seed(237)
+toyG <- sample_gnm(n=50,m=12)
+plot(toyG)
+```
+
+Note that you don't visualize the 12 edges because they connect nodes that are close together. 
+
+
+
+## 2. Adjacency matrix and format conversions
+You can convert a graph into its adjacency matrix:
+```{r}
+Afriends <- as_adj(gfriends)
+dim(Afriends)
+```
+
+Beware: by default `as_adj` creates a matrix with *sparse* format and certain classical operations are. not possible  :
+```{r, error=T}
+is.matrix(Afriends)
+class(Afriends)
+t(Afriends)
+```
+
+To correct for that, just use option `sparse=FALSE`:
+```{r}
+Afriends <- as_adj(gfriends, sparse=FALSE)
+is.matrix(Afriends)
+```
+
+
+
+## 3. Properties of a simple graph
+
+Get familiar with the following functions by applying them to the graphs created above. Also use the package documentation (with `help()`) and **READ** it!
+```{r, eval=F}
+vcount()
+ecount()
+V()
+E()
+is.directed()
+```
+
+
+## 4. Elementary operations 
+
+You can do the fusion of 2 graphs by a simple `+` operation 
+```{r}
+E4 <- c(3,7, 2,5, 4,1, 6,5, 2,4)
+g4 <- graph(edges=E4, directed=FALSE)
+fused_G <- g1+g4
+plot(fused_G)
+```
+
+Note that this produces (at least) 2 disconnected components and the nodes of the second graph have been renamed to be distinguished from the nodes of the first one. To connect these 2 graphs one needs to add edges
+
+```{r}
+V(fused_G)
+G_more <- add.edges(fused_G,c(14,3, 11,5))
+plot(G_more)
+```
+
+Another possibility is to use `union`, in which case the nodes that have the same names/numbers are considered the same:  
+```{r}
+fused_G2 <- union(g1,g4)
+plot(fused_G2)
+```
+
+
+
+When the graph is bipartite, a `vertex attribute` is added to the vertices
+```{r}
+Gb1 <- sample_bipartite(n1=5, n2=8, type="gnm", m=11)
+vertex_attr(Gb1)
+plot(Gb1,layout=layout_as_bipartite)
+Gb2 <- sample_bipartite(n1=3, n2=4, type="gnm", m=7)
+plot(Gb2,layout=layout_as_bipartite)
+plot(Gb1+Gb2, layout=layout_as_bipartite)
+# plot(union(Gb1,Gb2), layout=layout_as_bipartite) # This does'nt work ! 
+```
+
+It is not possible to simply do a `union` of 2 bipartites graphs. Indeed, the `union` function preserves vertices attributes. You could use the following code to correct for that:
+
+
+```{r}
+union_bipartite<-function(list_nets){
+	x<-do.call(igraph::union, list_nets)
+	l<-length(list_nets)
+	type_vec<-sapply(1:l,function(y) paste0("type_",y))
+	or_types<-apply(sapply(1:l, function(k) vertex_attr(x, type_vec[k])),1,any)
+	V(x)$type<-!(is.na(or_types)|!(or_types))
+	x
+}
+
+net1<-sample_bipartite(15,10,"gnp",0.1)
+V(net1)$name<-c(sapply(1:15,function(x) paste0("A_",x)),sapply(1:10,function(x) paste0("B_",x)))
+
+net2<-sample_bipartite(15,10,"gnp",0.2)
+V(net2)$name<-c(sapply(6:20,function(x) paste0("A_",x)),sapply(3:12,function(x) paste0("B_",x)))
+
+net3<-sample_bipartite(20,12,"gnp",0.25)
+V(net3)$name<-c(sapply(1:20,function(x) paste0("A_",x)),sapply(1:12,function(x) paste0("B_",x)))
+
+nets<-union_bipartite(list(net1,net2,net3))
+plot(net1,layout=layout_as_bipartite)
+plot(net2,layout=layout_as_bipartite)
+plot(nets,layout=layout_as_bipartite)
+V(nets)[which(V(nets)$type)]$name
+V(nets)[which(!V(nets)$type)]$name
+```
+## 5. Graphs visualisation 
+
+### 5.1 Network layouts: common algorithms for visualisation 
+
+To know more about that: https://igraph.org/r/doc/layout_.html
+
+```{r}
+plot(gfriends)
+```
+
+To choose a specific layout, use the following option (use autocompletion to see the possible layouts): 
+
+```{r}
+plot(gfriends, layout=layout_as_star)
+```
+```{r}
+plot(gfriends, layout=layout_in_circle)
+```
+
+```{r}
+plot(gfriends, layout=layout_randomly)
+```
+
+Two popular visualization algorithms for having visualizations deemed “aesthetic”.
+If you want more information: https://halshs.archives-ouvertes.fr/halshs-00839905/document
+```{r}
+plot(gfriends, layout=layout.fruchterman.reingold)
+```
+```{r}
+plot(gfriends, layout=layout.kamada.kawai)
+```
+
+
+ 
+
+### 5.2 Embellish your figures with `igraph`
+
+To see all options of `plot()` just type `?igraph.plotting`
+
+The most common ones are:
+
+- `vertex.color`, `vertex.shape`,	`vertex.size`, `vertex.label` color, shape, size and labels of the nodes
+- `edge.color`, `edge.label` edge color and labels
+
+```{r}
+plot(net)
+plot(net, edge.arrow.size=.4)
+plot(net, vertex.color="orange", edge.color="blue", vertex.label.color="black", edge.arrow.size=.4)
+```
+
+
+If we want to use additional information to color the nodes according to the covariates (here the type of media, the size of the nodes according to the audience, the thickness of the edges according to their weight...) or on the edges (here valued and of different types).
+You can find this information here:
+```{r}
+vertex_attr(net)
+V(net)$media
+edge_attr(net)
+E(net)$weight
+```
+
+```{r}
+plot(net, vertex.label=V(net)$media, edge.arrow.size=.4)
+plot(net, vertex.label=V(net)$media, edge.arrow.size=.4, vertex.color=V(net)$media.type)
+plot(net, vertex.label=V(net)$media, edge.arrow.size=.4, vertex.color=V(net)$media.type, vertex.size=V(net)$audience.size)
+plot(net, vertex.label=V(net)$media, vertex.color=V(net)$media.type, vertex.size=V(net)$audience.size, edge.width=E(net)$weight)
+```
+
+To change the color of the link based on its type
+
+```{r}
+E(net)$color[E(net)$type=="hyperlink"]<-"blue"
+E(net)$color[E(net)$type=="mention"]<-"red"
+plot(net, edge.arrow.size=.4)
+```
+
+
+# Exercise 1
+
+Search the web for graphs and import them onto your machine (you will keep the data recovery address as a comment in   your file). Vary the original formats if you can, and the
+   type of graph (directed or not). Determine the order (number of nodes) and size (number of edges) of the graphs and visualize them.
+  
+Here is a list of servers offering real graph data:
+
+- SocioPatterns research project http://www.sociopatterns.org/datasets/
+- UC Irvine Network data repository http://networkdata.ics.uci.edu
+- Page de Mark Newman http://www-personal.umich.edu/~mejn/netdata/
+- Stanford Network Analysis Project (collection of large networks)  https://snap.stanford.edu/data/index.html
+ 

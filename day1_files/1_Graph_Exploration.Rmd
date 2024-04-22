@@ -1,0 +1,136 @@
+---
+title: "Graph Exploration"
+author: "EcoNet Group"
+date: ""
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this session we will discover the functions of the `igraph` package to manipulate graphs in different formats and calculate different statistics of a graph. Let's load the `igraph` library:
+```{r}
+library(igraph)
+```
+
+as well as two datasets already used during the previous session:
+```{r}
+miserab <- read_graph(file='day1_files/Toy_Data/lesmis.gml', format="gml") 
+```
+```{r}
+friends <- read.table(file='day1_files/Toy_Data/Friendship-network_data_2013.csv')
+gfriends <- graph_from_data_frame(friends, directed=TRUE) 
+```
+
+
+## 1. Properties of a simple graph
+
+Let us recall the following functions to determine the order and size of a graph, obtain the list of nodes or edges as well as know if the graph is directed or not:
+```{r}
+vcount(miserab)
+ecount(miserab)
+V(miserab)
+E(miserab)
+is.directed(miserab)
+```
+
+and for the graph `gfriends`:
+```{r}
+vcount(gfriends)
+ecount(gfriends)
+V(gfriends)
+E(gfriends)
+is.directed(gfriends)
+```
+
+
+## 2. Degree distribution with `igraph`
+
+When the graph is undirected: 
+```{r}
+degree(miserab)
+```
+
+
+and when its directed, indegrees and outdegrees are obtained with 
+```{r}
+degree(gfriends, mode="in")
+degree(gfriends, mode="out")
+```
+
+Empirical distribution of degrees:
+```{r}
+degree_distribution(miserab)
+degree_distribution(gfriends, mode="out") 
+```
+
+Graphical representation of this degree empirical distribution:
+```{r}
+barplot(degree_distribution(miserab), names.arg=as.character(0:max(degree(miserab))), col='green', main='Degrees for the graph Les Misérables')
+```
+
+
+### Degrees via the adjacency matrix
+We can check by hand that the degrees of the nodes are indeed given by the sum of the row or column of the adjacency matrix:
+```{r}
+Afriends <- as_adj(gfriends)
+sum(Afriends[1,])
+# rowSums(Afriends) # be careful, that doesn't work because it's not a matrix! 
+rowSums(as.matrix(Afriends)) # Pay attention to the format of this output!
+degree(gfriends, mode="out") # idem 
+sum(Afriends[,1])
+colSums(as.matrix(Afriends)) # Pay attention to the format of this output!
+degree(gfriends, mode="in") # idem 
+```
+ 
+
+## 3. Other statistics 
+
+Get familiar with the following `igraph` functions for a graph $G$, and
+apply them to Les Misérables and `gfriends` graphs:
+
+```{r, eval=F}
+components(G)                      
+edge_density(G)
+diameter(G, directed=TRUE, unconnected=FALSE)
+diameter(G, directed=TRUE, unconnected=TRUE)
+get_diameter(G, directed=TRUE)
+count_triangles(G) 
+transitivity(G)
+
+neighbors(G, 1,  mode='out')
+neighbors(G, 1, mode='in')
+neighbors(G, 1, mode='all')
+ 
+K3 <- cliques(G, min=3, max=3)
+K3[[1]] 
+length(K3) 
+sum(count_triangles(G))/3
+
+closeness(G,mode="total") 
+closeness(G)
+betweenness(G)
+plot(G, vertex.size=betweenness(G))
+```
+ 
+
+ 
+## Exercise 2.  
+ - Analyze the graphs from exercise 1 (previous session) with the descriptive statistics you know.
+  - Make sure you understand what formulas are used by each of the functions above. Do they correspond to the definitions seen in class? Pay particular attention to the cases of directed graphs and the connectivity problem.
+  - Some statistics only make sense for related graphs. In this case, select the largest connected component of the graph and apply the statistical calculation on this component.
+  - Count the 2-stars and 3-stars in the graphs.
+  - Do the same on the famous Karate Club graph (available in `R`): In 1977, W. W. Zachary recorded interactions in a karate club for two years. During observation, a conflict developed between the administrator and the instructor.  
+  
+```{r}
+library(igraphdata)
+data(karate)
+```
+
+
+
