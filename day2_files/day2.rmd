@@ -1,0 +1,720 @@
+% Advanced metrics on networks and null models
+
+
+# Outline
+1. Advanced metrics
+
+1.1. degrees
+
+1.2. trophic levels
+
+1.3. modularity and clustering
+
+1.4. generalism, network specialization, nestedness
+
+1.5. robustness to species removal
+
+1.6. $\beta$ diversity of networks 
+
+2. Models
+
+2.1. de novo generation of networks
+
+2.2. null models
+
+# Preamble
+The script script_metricsnull.R contains the examples given in the presentation.
+The source script functions.R contains the functions especially devised for this course.
+The source script crutch_functions.R is only useful if the FWebs package cannot be installed/compiled on your computer.
+
+```{r}
+source('functions.R')
+```
+
+We will make use of two real datasets:
+Food web data from
+Cruz-Escalona, V. H., Arreguin-Sanchez, F. & Zetina-Rejon, M. (2007) Analysis of the ecosystem structure of Laguna Alvarado, western Gulf of Mexico, by means of a mass balance model. Estuarine, Coastal and Shelf Science, 72, 155-167.
+
+```{r}
+mat_foodweb<-t(as.matrix(mg1[[1]][[223]]))
+rownames(mat_foodweb)<-names(mg1[[1]][[223]])
+colnames(mat_foodweb)<-names(mg1[[1]][[223]])
+```
+
+Plant-pollinator data from
+Barrett, S. C. H. & Helenurm, K. (1987) The reproductive biology of boreal forest herbs. I. Breeding systems and pollination. Canadian Journal of Botany, 65, 2036-2046.
+
+```{r}
+mat_plantpol<-barrett1987
+mat_plantpol_bin<-mat_plantpol
+mat_plantpol_bin[mat_plantpol>0]<-1
+```
+
+# Building graphs
+One of the most useful R objects to work on networks is the graph, created through the igraph package.
+Here is a collection of examples, using functions from different packages for graphical display.
+
+```{r}
+foodweb<-graph_from_adjacency_matrix(mat_foodweb)
+plot(foodweb,layout=layout_as_food_web3(foodweb))
+plotMyMatrix(as_adj(foodweb,sparse=FALSE))
+undirected_foodweb<-as.undirected(foodweb)
+plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE))
+
+pollination<-graph_from_biadjacency_matrix(mat_plantpol)
+plot(pollination,layout=layout_as_bipartite)
+plotMyMatrix(as_adj(pollination,sparse=FALSE))
+plotMyMatrix(as_biadjacency_matrix(pollination,sparse=FALSE))
+pollination_bin<-graph_from_biadjacency_matrix(mat_plantpol_bin)
+plotweb(mat_plantpol)
+```
+
+In the following:
+- foodweb is a directed binary network
+- undirected_foodweb is its undirected equivalent (the adjacency matrix has been made symmetric)
+- pollination is a weighted bipartite network
+- pollination_bin is its binarized version
+
+# Advanced metrics
+
+## Built-in metrics
+FWebs and bipartite both yield lots of ''built-in automatic outputs'', accessible through the following commands for instance:
+
+```{r}
+fw.metrics(list(list(mat_foodweb)))
+networklevel(mat_plantpol)
+```
+
+The issue is that not all these outputs are equally useful... Let's dissect them one by one.
+
+## Degrees
+A basic element of representation of networks is the degree of a node.
+The degree of a node is the number of interactions it shares with other nodes.
+For undirected networks, this definition is straightforward and corresponds to row- or column-sums of the binary adjacency matrix.
+For directed networks, one actually needs to define the in-degree and out-degree of each node, which correspond respectively to the number of incoming and outgoing edges.
+The function degree of igraph computes all of these using the argument called mode.
+
+```{r}
+degree(foodweb)
+degree(foodweb,mode="in")
+degree(foodweb,mode="out")
+```
+
+## Degree distributions
+The degree distribution corresponds to the realized empirical distribution of degrees in the network. Different operations can be done with a degree distribution:
+1. it can be computed empirically
+2. one can generate similar networks from a degree sequence
+3. a degree distribution can be compared to existing benchmark distributions
+
+Here are three different ways to represent a degree distribution, using different functions from different packages.
+
+```{r}
+hist(degree(foodweb),breaks=0:max(degree(foodweb)))
+plot(degree_distribution(foodweb, cumulative = TRUE),type="l")
+dd.fw(list(as.data.frame(mat_foodweb)), log = FALSE, cumulative = TRUE)
+```
+
+## Comparison of degree distributions
+Using simple tests (here, Kolmogorov-Smirnov's test), one can compare an empirical distribution of degrees to benchmark distributions, such as the binomial, Poisson or negative binomial.
+
+```{r}
+ks.test(degree(foodweb),"pbinom",size=length(V(foodweb)),prob=mean(degree(foodweb))/length(V(foodweb)))
+ks.test(degree(foodweb),"ppois",lambda=mean(degree(foodweb)))
+ks.test(degree(foodweb),"pnbinom",mu = mean(degree(foodweb)), size = mean(degree(foodweb))^2/(var(degree(foodweb))-mean(degree(foodweb))))
+```
+
+## Degree distributions - usefulness of power laws?
+Power laws are among the most popular distributions of degrees discussed in the literature. However, a question worth asking is whether power laws are useful in ecology, i.e. whether it is actually possible to ascertain power-lawed degrees in ecological networks.
+As Stumpf and Porter (2012) clearly articulated, this would require to have degrees ranging at the very least between 1 and 100  (2 orders of magnitude), which is quite unheard of.
+
+
+## Connectance
+Connectance is an important notion. It is defined as the proportion of possible interactions that really exist. There are plenty of ways to implement its computation (e.g. using mean), but it is important to correct these according to the impossible interactions (e.g. correcting for self-links or edges within levels in bipartite networks).
+
+Here, using basic functions as well as some from cheddar and FWebs.
+
+```{r}
+mean(mat_foodweb)
+DirectedConnectance(as_Community(foodweb)) 
+mean(as_adj(undirected_foodweb,sparse=FALSE))/2
+mean(as_adj(foodweb,sparse=FALSE))
+fw.metrics(list(list(mat_foodweb)))$connectance
+```
+
+## Trophic levels
+Trophic levels classically correspond to the number of trophic links between a species and any basal species (primary producers) + 1. Basal species always belong to level 1 and consumers of basal species belong to species 2, etc. Complexity arises when species are omnivorous and can feed on multiple trophic levels.
+The package cheddar has methods to compute all the classic trophic levels. For instance, the first column of foodweb_TL gives trophic levels as computed using the ''shortest path'' method (TL of a species is exactly 1+the size of the shortest path to any basal species) while the third column yields the longest trophic level (the longest path linking the focal species to any basal species).
+
+```{r}
+foodweb_TL<-TrophicLevels(as_Community(foodweb))
+
+plotMyMatrix(mat_foodweb,clustering=list("row"=foodweb_TL[,1],"col"=foodweb_TL[,1]))
+plotMyMatrix(mat_foodweb,clustering=list("row"=foodweb_TL[,3],"col"=foodweb_TL[,3]))
+```
+
+Another possible measure of trophic levels is the top-down measure of MacKay et al., which is based on the use of a normalized Laplacian of the graph. It yields a measure of trophic level that is maximal for apex predators and decreases according to the distance between species and the apex predators (more or less). Because this trophic level score depends on the Laplacian, it requires a single-component network (to be checked before using it). Here we use it on the largest component of foodweb.
+
+```{r}
+count_components(foodweb)
+tl.1<-trophic_levels(largest_component(foodweb))
+
+plot(TrophicLevels(as_Community(largest_component(foodweb),"."))[,1],tl.1[,1],xlab="ShortestTL",ylab="MacKayTL")
+plot(TrophicLevels(as_Community(largest_component(foodweb),"."))[,6],tl.1[,1],xlab="PreyAveragedTL",ylab="MacKayTL")
+```
+
+These plots show the correspondence between the classic TL 1 (shortest path) and 6 (prey-averaged TL) and MacKay's TL definition.
+
+## Network structure
+Ecological interaction networks can have non-random structures. In ecology, we tend to focus on two such structures: modularity (on the left) and nestedness (on the right).
+
+```{r,echo=FALSE}
+knitr::include_graphics("Lewinsohn.jpg")
+```
+
+## Modularity
+Modularity, as defined by Newman, is given by the following formula:
+$$\begin{equation}
+Q = \frac{1}{A} \sum_{i,j} \left[ a_{ij} - \frac{d_i d_j}{A}\right]\delta_{ij}
+\end{equation}$$
+where $A$ is the total number of connections in the network (i.e. $A = \sum_i \sum_j a_{ij}$), $d_i$ is the degree of species $i$ (i.e. $d_i = \sum_j a_{ij}$) and the $\delta_{ij}$ are dummy variables indicating whether species/nodes $i$ and $j$ are assumed to belong to the same module/community/cluster. 
+In layman's terms, modularity is a quantity that measures how ''intense'' interactions are within modules, i.e. compares $a_{ij}$ to its expectation given the degrees of $i$ and $j$, but only taking into account edges within modules.
+The principle of modularity search is to look for the partitioning of nodes into communities/modules that maximizes the associated modularity score. 
+The problem of modularity search is quite complex (NP-complete problem) and thus can be solved with different algorithms that have their pros and cons.
+
+Modularity, in its classic form, only works for undirected networks.
+Three algorithms that are often used in ecology are the edge-betweenness algorithm (EB), the leading-eigenvector one (LE) and the Louvain algorithm (ML).
+
+```{r}
+foodweb_EB.mod<-cluster_edge_betweenness(undirected_foodweb)
+foodweb_LE.mod<-cluster_leading_eigen(undirected_foodweb)
+foodweb_ML.mod<-cluster_louvain(undirected_foodweb)
+```
+
+## Which algorithm to compute modularity?
+Because there are tons of algorithms already developed to find clusters/communities/modules in networks, it is easy to get lost... Yet two papers (at least) have made our life easier by comparing all these algorithms, bot for unipartite networks (Yang et al. 2016) and bipartite networks (Leger et al. 2015).
+
+## Plotting modularity
+Here is a comparison of modules as obtained through the three algorithms used before.
+
+```{r}
+par(mfrow=c(1,3))
+plot(foodweb_EB.mod,foodweb,layout = layout_as_food_web(foodweb))
+plot(foodweb_LE.mod,foodweb,layout = layout_as_food_web(foodweb))
+plot(foodweb_ML.mod,foodweb,layout = layout_as_food_web(foodweb))
+```
+
+It is also possible to plot the modules using the ''matrix'' visualization of networks.
+
+```{r}
+plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_ML.mod$membership,"col"=foodweb_ML.mod$membership))
+```
+
+## Comparing modules from the different algorithms
+For the sake of visualizing whether the modules obtained with the different algorithms correspond, we can make use of alluvial plots.
+
+```{r}
+make_alluvial_2(foodweb_ML.mod$membership,foodweb_LE.mod$membership,"Louvain","Leading_eigen")
+make_alluvial_2(foodweb_ML.mod$membership,foodweb_EB.mod$membership,"Louvain","Edge_betweenness")
+```
+
+## Modularity on bipartite network
+Modularity work as easily on bipartite networks as on unipartite ones. However, the representation of the modules is more useful when done on the bi-adjacency matrix.
+
+```{r}
+pollination_LE.mod<-cluster_leading_eigen(pollination_bin)
+
+plotMyMatrix(mat_plantpol_bin,clustering=list("row"=pollination_LE.mod$membership[!V(pollination_bin)$type],"col"=pollination_LE.mod$membership[V(pollination_bin)$type]))
+```
+
+## Spectral clustering
+A convenient alternative algorithm to find clusters within a network is spectral clustering.
+The idea of spectral clustering is to make use of the Laplacian matrix $L$ of the graph, given by:
+$$L = D - A$$
+where $D$ is the diagonal matrix of nodes' degrees and $A$ is the adjacency matrix.
+
+The Laplacian matrix has interesting properties, the best of all being that the number of zeros among its eigenvalues yield the number of components of the graph (one 0 means there is a single connected component, two zeros means the network is split in two disconnected components, etc.). The eigenvectors associated the zero eigenvalues can inform on the membership of nodes to the different components.
+
+The heuristics of the spectral clustering is to use the eigenvectors associated with the set of small non-zero eigenvalues of $L$ to deduce the ``almost components'' of the graph. To do so, one chooses a number of no-zero eigenvalues to keep and then the algorithm uses the associated eigenvector to find the groups through a K-means algorithm on the space obtained with these eigenvectors.
+
+The function laplacian_spectral_gap computes the ''spectral gap'' plot and tries to find the optimum number of clusters.
+
+```{r}
+foodweb_SG<-laplacian_spectral_gap(undirected_foodweb)
+foodweb_SG$optim_n
+```
+
+Once we know how many clusters we are looking for, we can compute the spectral clustering.
+
+```{r}
+foodweb_SC<-spectral_clustering(undirected_foodweb,5)
+plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_SC,"col"=foodweb_SC))
+modularity(undirected_foodweb,foodweb_SC)
+```
+
+In passing, we note that the modularity of the spectral clustering is not so bad.
+
+## Comparison between modules and spectral clusters
+With an alluvial plot it is possible to "see" how congruent the modules obtained by the Louvain algorithm are with the clusters identified by the spectral clustering method.
+
+```{r}
+make_alluvial_2(foodweb_ML.mod$membership,foodweb_SC,"Louvain","Spectral clustering")
+```
+
+## Node specialization
+In ecology, one nagging question is whether we can reliably tell the level of specialization of the different species, i.e. whether they depend on a single species or can substitute one interactor species for another one.
+
+Blüthgen et al. (2006) proposed a metric (often noted $d_i$ or $d^\prime_i$ in its relative version) to work out the level of specialisation of a species based on weighted interactions, using the following equation:
+$$d_i = \sum_j \frac{w_{ij}}{W_i} ln\left[ \frac{w_{ij}W}{W_iW_j}\right]$$
+where $w_{ij}$ is the weight of the interaction between species $i$ and $j$, $W_i$ is the sum of all interactions of species $i$ (row sum), $W_j$ is the sum of all interactions of species $j$ (column sum), and $W$ is the sum of all interaction weights between all species.
+
+The following formula yields the relative specialization score, which is always between 0 and 1:
+$$d^\prime_i = \frac{d_i-d_{min}}{d_{max}-d_{min}}$$
+where the $d_{min}$ and $d_{max}$ values are obtained from theoretical minimum and maximum.
+
+The dfun function in the package bipartite does the computation of both $d$ and $d^\prime$, but the computation of $d_{min}$ is not always accurate.
+One can check the relationship between specialization and degree with a simple scatter plot.
+
+```{r}
+dfun(mat_plantpol)
+plot(degree(pollination)[!V(pollination_bin)$type],dfun(mat_plantpol)$dprime,xlab="degrees",ylab="d'")
+```
+
+This function was coded for bipartite networks, but you need to transpose the bi-adjacency matrix to obtain the values of $d$ or $d^\prime$ for the other level.
+
+```{r}
+dfun(t(mat_plantpol))
+plot(degree(pollination)[V(pollination_bin)$type],dfun(t(mat_plantpol))$dprime,xlab="degrees",ylab="d'")
+```
+
+In the case of unipartite directed networks / food webs, dfun can also be used.
+
+```{r}
+foodweb_spe.res<-dfun(mat_foodweb)$dprime #as resource
+foodweb_spe.con<-dfun(t(mat_foodweb))$dprime #as consumer
+interm_species_list<-intersect(names(foodweb_spe.res),names(foodweb_spe.con))
+plot(foodweb_spe.res[which(names(foodweb_spe.res)%in%interm_species_list)],foodweb_spe.con[which(names(foodweb_spe.con)%in%interm_species_list)],xlab="d' as prey",ylab="d' as consumer")
+```
+
+## Network specialization
+Blüthgen et al. (2006) also introduced a network-level metric of specialization which is based on Shannon's entropy.
+The metric $H_2$ is simply the entropy of interaction weights and the relative measure $H_2^\prime$ is its opposite, scaled between 0 and 1.
+
+```{r}
+H2fun(mat_plantpol)
+```
+
+## Nestedness
+The idea of nestedness is to measure the tendency for specialists to only interact with a subsample of the interactors of generalists. In other words, a network would be said "non-nested" only when specialists would interact more likely with specialists than with generalists.
+
+Several indices have been developed over the years. Navigating their complexity is the purpose of the synthesis written by Podani and Schmera (2012).
+
+The package bipartite proposes some methods to do this (partly borrowed from the package vegan), in the function "nested".
+
+```{r}
+pollination_nestdness<-nested(mat_plantpol, method = "ALL", rescale=TRUE, normalised=TRUE)
+```
+
+Another option is to use the various functions directly from vegan:
+
+```{r}
+nestednodf(mat_plantpol)
+nestednodf(mat_plantpol,weighted=TRUE)
+nestednodf(mat_plantpol,weighted=TRUE,wbinary=T)
+nestednodf(mat_plantpol_bin)
+nestednodf(mat_plantpol_bin,weighted=TRUE)
+nestednodf(mat_plantpol_bin,weighted=TRUE,wbinary=T)
+```
+
+Recent research seems to indicate that the concept of nestedness is not really fruitful for a variety of reasons:
+- it seems to be very strongly linked to connectance;
+- the diversity of nestedness indices tend to obfuscate its meaning (results reported show more about the index than about the concept);
+- these different indices can yield very different results when applied to the same dataset;
+- in the classic case of power law distributions of degrees, the nestedness scores tend to be completely detrmined by the exponent of the power law;
+- finally, when putting the common datasets in the right matrix ensemble (i.e. using correct null models to sample similar matrices), reported nestedness values seem to be completely expected.
+
+## Robustness to secondary extinctions
+The general idea is to assume that when a species is removed from a network, the species interacting with it could go extinct (secondary extinction).
+Robustness analysis then consists in assessing how many species are lost when R species are removed.
+The most used indicator of robustness is the R50 which is the percentage of species on needs to remove from a web to lose 50% of its species.
+
+```{r,echo=FALSE}
+knitr::include_graphics("Dunne1.jpg")
+```
+
+In the paper of J. Dunne and collaborators, they used examples based on a variety of datasets. The basic rule then is that a species go extinct when it loses all its prey items (except itself if it is cannibalistic).
+One can obtain different scenarios based on how removed species are chosen (intentionality: how strongly the species' degree changes its probability of being drawn randomly as the next one to be removed).
+
+```{r,echo=FALSE}
+knitr::include_graphics("Dunne2.jpg")
+```
+
+We can first try a robustness analysis on a virtual dataset, using FWebs (or the functions in "crutch_functions.R"). We will use the "niche model" to generate a virtual food web.
+
+The plot yields the value of the R50 as a function of intentionality, which is a proxy for how strongly species removals target species based on their degree.
+
+```{r}
+niche<-niche_matrix(0.2,200)
+m<-niche$matrix
+net<-graph_from_adjacency_matrix(m,mode="directed")
+i_index <- seq(from = 0, to = 0.95, by =0.05)
+prob_exp<-exponent.removal(net, i_index)
+V(net)$name<-1:200
+iterate(fw_to_attack=net, prob_exp, alpha1=50, iter=10, i_index, plot = TRUE)
+```
+
+We can also try it on the real food web data:
+
+```{r}
+prob_exp<-exponent.removal(foodweb, i_index)
+iterate(fw_to_attack=foodweb, prob_exp, alpha1=50, iter=20, i_index, plot = TRUE)
+```
+
+The increase in R50 at intermediate intentionality might be due to the suppression of hubs: targeting hubs in a sufficiently regular manner can result in disconnected components, which are then quite robust against secondary extinctions.
+
+## Beta diversity of networks
+Ohlmann et al. developed a measure of the "beta diversity" of nodes and links among networks that share some nodes. For nodes, this amounts to the classic beta diversity of communities. For links, two measures are possible, based on the following formula:
+$$L_{ij} = \pi_{ij}p_ip_j$$
+where 
+- $L_{ij}$ is the relative weight of the link between species $i$ and $j$,
+- $p_i$ is the relative abundance of species $i^$,
+- $\pi_{ij}$ is the probability of interaction between species $i$ and $j$j.
+The beta diversity of the $p$'s corresponds to the beta diversity of nodes (community diversity), while the beta diversity of either $L_{ij}$ or $\pi_{ij}$ provides a measure of link diversity among networks.
+
+The functions are implement in package "econetwork". We test it on four networks of the same 60 species.
+
+```{r}
+gList <- c()
+for(i in 1:4){
+  graphLocal <- sample_gnp(60, 0.1, directed=TRUE)
+  V(graphLocal)$name <- as.character(1:60)
+  gList <- c(gList, list(graphLocal))
+}
+names(gList) <- c("A","B","C","D")
+
+disPairwise(gList, type='P')
+disPairwise(gList, type='L')
+disPairwise(gList, type='Pi')
+```
+
+As expected, the dissimilarity/distance between node sets is 0, but the distance among edge sets is greater than 0.
+
+# Network models
+Statistics on networks are hard to test because everything depends on everything else.
+In order to test statistics, we need to construct models. These are generally classified in two types:
+- null models, which correspond to algorithmic models shuffling the initial network to obtain a series of networks that obey some constraints (e.g. same sequence of degrees of the nodes)
+- generative models, which provide a network based on a few parameters and some working hypotheses (e.g. all connections are equally likely and their probability is known)
+
+Among generative models, some (but not all) are probabilistic (i.e. can be fitted), which clearly opens the door to the elaboration of statistical tests in the classic sense (testing whether the working hypothesis of the model holds). 
+
+The other generative models (e.g. preferential attachment) and all null models can be used to re-simulate the network in order to obtain the p-value corresponding to the occurrence of the statistic value under the hypothesis represented by the generative or null model.
+
+
+## How to make a food web form an undirected unipartite graph?
+Before tackling models per se, one important step is to be able to convert any undirected unipartite network into a directed network that can be thought of as a food web.
+The main difficulties are that randomly orienting the links is likely 
+- to cause cycles (which in principle do not exist in food webs), and 
+- not to have a few species that feed on no one else (the "basal" level).
+
+The "make_food_web_from_undirected" function tries to cope with this two difficulties. It asks for an undirected graph and a number of basal species. Then it proceeds in two steps:
+
+1. it colours the graph to find one color that has at least as many nodes as the basal set, and then it assigns the "basal species" into this colour;
+2. it orients the graph using a breadth-first search (see the following figure).
+
+```{r,echo=FALSE}
+knitr::include_graphics("DubartMassolAlgo.jpg")
+```
+
+## The configuration model
+
+One of the most useful and simplest null model is the configuration model. Under this model, edges are randomly reattached to other nodes such that all nodes keep their degrees. This behaves effectively as if all nodes were attached to half-edges which were randomly paired until the resulting network yields no self-link and no double link.
+
+```{r,echo=FALSE}
+knitr::include_graphics("configuration.jpg")
+```
+
+### Generate configurations for an undirected unipartite network
+Here is an example to generate configurations starting with a random graph (Erdos-Rényi model).
+
+```{r}
+net<-sample_gnp(50,0.2, directed=FALSE)
+sample.config.undirected<-lapply(1:100,function(x) sample_degseq(degree(net), method = "vl"))
+length(sample.config.undirected)
+```
+
+The function "config_VL" (in the source file) does that automatically from the input network or from its adjacency matrix.
+```{r}
+alt.config<-config_VL(net,100)
+plot(alt.config[[42]])
+```
+
+### Example of use of unipartite configuration model
+Here, we exemplify the use of the configuration model with a simple issue. We want to assess whether the modularity of the largest component of the food web data is significant (in the sense: not expected from the configuration model).
+In this example, food webs are considered in their undirected form.
+```{r}
+one_comp_foodweb<-as.undirected(largest_component(foodweb))
+one_comp_foodweb_LE.mod<-cluster_leading_eigen(one_comp_foodweb)
+one_comp_foodweb_LE.mod$mod
+
+foodweb_configs<-config_VL(one_comp_foodweb,1000)
+mods_configs<-sapply(1:1000, function(x) cluster_leading_eigen(foodweb_configs[[x]])$mod)
+```
+
+The function p.val (from the source file) computes the p-value based on a collection of networks (here generated with the configuration model) and their modularities. Here, we specify we want a "larger than" test.
+```{r}
+p.val(test_val=one_comp_foodweb_LE.mod$mod,test_collection=mods_configs,method="larger",label="modularity")
+```
+
+### Randomization of directed networks
+To randomize a directed network, we can make use of "sample_degseq" also, but we are not assured of uniform sampling anymore.
+```{r}
+net<-sample_gnp(50,0.2, directed =FALSE)
+net_directed<-make_food_web_from_undirected(net,5)
+sample.config.directed<-lapply(1:100,function(x) sample_degseq(degree(net_directed,mode="out"), degree(net_directed,mode="in"), method = "simple.no.multiple"))
+```
+
+We can plot the initial food web and one of its configurations side by side just to check that these are different.
+```{r}
+par(mfrow=c(1,2))
+plot(net_directed,layout=layout_as_food_web3(net_directed))
+plot(sample.config.directed[[1]],layout=layout_as_food_web3(sample.config.directed[[1]]))
+```
+
+### Configuration model for bipartite networks
+In the case of bipartite networks, Strona et al. proposed the "curveball" algorithm which is efficient and ensures uniformity of the sampling of equivalent bipartite networks.
+
+It is implemented in the package "vegan" with functions simulate and nullmodel (pay attention: there is also a nullmodel function in "bipartite"). The result is given as a "cube" of data (same matrix dimensions, but with depth for all simulated networks).
+```{r}
+net<-sample_bipartite(40,60,"gnp",0.1)
+net<-largest_component(net)
+net_mat<-as.matrix(as_biadjacency_matrix(net))
+sample.bip.config<-simulate(vegan::nullmodel(net_mat,"curveball"),nsim=1000) 
+dim(sample.bip.config)
+```
+
+This is also implented in the "config_VL" function.
+
+```{r}
+alt.config<-config_VL(net,1000)
+```
+
+### Example of use of bipartite configuration model
+Here, we exemplify the use of the bipartite configuration model to ascertain the significance of the nestedness of the bipartite network "net_mat" (created earlier usinf the bipartite ER model).
+
+```{r}
+net_nestedness<-nested(net_mat, method = "NODF2")
+nestedness_configs<-sapply(1:1000, function(x) nested(sample.bip.config[,,x], method = "NODF2"))
+
+p.val(net_nestedness,nestedness_configs,method="two-sided",label="nestedness")
+```
+
+## Generative models
+Now we turn to generative models, i.e. those models that yield a network based on summary parameters (not models that turn out a network from a network).
+In the following, we will focus on a few of those, mainly Erdos-Rényi, preferential attachment, models with invariants, models with prescribed degree sequence and the expected degree distribution model.
+
+### Food web generation using Erdos-Rényi
+The ER algorithm assumes that all edges are equally likely. To construct a food web, one can use the food web construction from an undirected algorithm presented above.
+
+```{r}
+net<-make_food_web_from_undirected(sample_gnp(50,0.2, "gnp",directed =TRUE),basal = 10)
+V(net)$name<-sapply(1:50,function(x) paste0("sp_",x))
+plot(net,layout=layout_as_food_web2(net))
+```
+
+It is possible to test whether the distribution of degrees follows a binomial (the expectation), but it looks significant a bit too easily...
+
+```{r}
+ks.test(degree(net),"pbinom",length(V(net))-1,mean(degree(net))/(length(V(net))-1))
+```
+
+### Food web generation using preferential attachment
+Undirected networks with PA can be obtained using the function "sample_pa". The argument "power" controls how fat the tail of the distribution is. As above, the undirected network is generated and then turned into a food web.
+
+```{r}
+net<-make_food_web_from_undirected(sample_pa(500, power = 1, directed = FALSE, out.pref=TRUE),basal = 50)
+plot(net,layout=layout_as_food_web2(net))
+```
+
+It is also possible to test whether the distribution of degrees follows a power law distribution ("ppldis").
+
+```{r}
+net_dist<-displ$new(degree(net))
+net_dist$setXmin(estimate_xmin(displ$new(degree(net)))$xmin)
+net_pars<-estimate_pars(net_dist)
+
+ks.test(degree(as.undirected(net)),"ppldis",xmin = estimate_xmin(displ$new(degree(net)))$xmin, alpha = net_pars$pars)
+```
+
+### Food web models with invariants: the cascade model
+In the 80-90's, one important goal of interaction network research was to find invariant properties, i.e. statistics or metrics that did not vary among food webs. With this goal in mind, two models were proposed.
+
+First, the cascade model of Cohen & Briand proposed that predators only eat a rather fixed number of prey species. This corresponds to predators eating prey that are are smaller than them with probability $c/S$ ($c$ being a fixed parameter), so that connectance decreases as $1/S$.
+
+```{r}
+net<-cascade_matrix(3,50)
+sum(net)/(dim(net)[1]*(dim(net)[1]-1))
+
+graph_cascade<-graph_from_adjacency_matrix(net)
+V(graph_cascade)$name<-sapply(1:50,function(x) paste0("sp_",x))
+plot(graph_cascade,layout=layout_as_food_web3(graph_cascade))
+
+net<-cascade_matrix(3,200)
+sum(net)/(dim(net)[1]*(dim(net)[1]-1))
+```
+
+### Food web models with invariants: the niche model
+The second model that was developed to find invariants is the niche model of Williams and Martinez. In this model, all species are supposed to be defined by their size and to eat all species with size contained within an interval centred around a size lower than the predator's.
+With the right parameter values, one can use this model to generate a food web that has a given connectance, whatever the number of species in the food web.
+
+```{r}
+net<-niche_matrix(0.1,50)
+sum(net$matrix)/(dim(net$matrix)[1]*(dim(net$matrix)[1]-1))
+
+graph_niche<-graph_from_adjacency_matrix(net$matrix)
+V(graph_niche)$name<-sapply(1:50,function(x) paste0("sp_",x))
+plot(graph_niche,layout=layout_as_food_web3(graph_niche))
+
+net<-niche_matrix(0.1,200)
+sum(net$matrix)/(dim(net$matrix)[1]*(dim(net$matrix)[1]-1))
+```
+
+### Food webs with prescribed degree sequence
+Here, the idea is not to generate a degree distribution in general, but rather to use a degree sequence that is "typical" of the wanted degree distribution. To do that, from the number of nodes/species and the distribution, one can extract the typical degrees of the nodes using the quantiles of the distribution. Then, using the Viger-Latapy's algorithm, it is possible to generate a random network, and then make it a food web.
+
+Here, an example with the Poisson distribution.
+```{r}
+net<-generate_DM_model(50,0.1,quant_fun="qpois", lambda=5)
+plot(net,layout=layout_as_food_web3(net))
+```
+
+And now an example with the negative binomial distribution.
+```{r}
+net<-generate_DM_model(50,0.1,quant_fun="qnbinom", mu = 4, size=50)
+plot(net,layout=layout_as_food_web3(net))
+```
+
+It is also possible to check whether the degrees follow the desired distribution.
+```{r}
+net<-generate_DM_model(450,0.1,quant_fun="qpois", lambda=7)
+hist(degree(net),breaks=0:max(degree(net)),main="")
+
+ks.test(degree(net),"ppois",lambda = mean(degree(net)))
+```
+
+### Food webs following the expected degree distribution (EDD) model
+The EDD model assumes that each node has a latent parameter (its expected degree) which is used to assess whether edges exist or not (multiplicative model). These latent parameters are assigned randomly among nodes following a given distribution (actually, using an increasing function of a uniform variable).
+
+The EDD model can generate networks with more or less heterogeneity in expected degrees (the "lambda" parameter of the function Simul_EDD).
+
+```{r}
+net_EDD<-Simul_EDD(50,0.2,2)
+graph_EDD<-graph_from_adjacency_matrix(net_EDD$net,mode="undirected")
+graph_EDD<-largest_component(graph_EDD)
+plotMyMatrix(net_EDD$net)
+foodweb_EDD<-make_food_web_from_undirected(graph_EDD,5)
+plot(foodweb_EDD,layout=layout_as_food_web3(foodweb_EDD))
+```
+
+### Bipartite network generation using Erdos-Rényi
+Here we simply use the "sample_bipartite" function of igraph to generate a random bipartite network in which all edges between level 1 and level 2 have the same probability of occurring.
+
+```{r}
+net<-sample_bipartite(25,25,"gnp",0.1)
+plot(net,layout=layout_as_bipartite)
+plotweb(as_biadjacency_matrix(net))
+```
+
+### Bipartite networks using the bipartite EDD (BEDD) model
+The BEDD model is the analogue of the EDD model, but for bipartite networks. Each node receives a random parameter which determines the probability of edge occurrences.
+The "hyper-parameters" controlling the heterogeneity of node degrees can be adjusted separately for the two levels of the network.
+
+```{r}
+net_bedd<-SimulB_EDD(25, 25, 0.1, 2, 2)
+graph_bedd<-graph_from_biadjacency_matrix(net_bedd$net)
+plot(graph_bedd,layout=layout_as_bipartite)
+plotweb(net_bedd$net)
+plotMyMatrix(net_bedd$net)
+```
+
+### Randomization through the BEDD model: nestedness, BEDD vs. configuration
+The BEDD model can be used to randomize a network and thus test the significance of some properties such as nestedness.
+
+```{r}
+sample.bip.EDD<-lapply(1:1000, function(x) randomize.BEDD(net_mat))
+nestedness_EDD<-sapply(1:1000, function(x) nested(sample.bip.EDD[[x]], method = "NODF2"))
+p.val(net_nestedness,nestedness_EDD,method="two-sided",label="nestedness")
+```
+
+It is enlightening to compare the density of simulated values of nestedness according to two different null models, here the configuration model (in blue) and the BEDD model (in green).
+
+```{r}
+plot(density(nestedness_configs),xlim=c(min(nestedness_configs,nestedness_EDD),max(nestedness_configs,nestedness_EDD)),xlab="",main="nestedness distributions",col="blue")
+lines(density(nestedness_EDD),col="darkgreen")
+```
+
+It is apparent that the BEDD allows for a wider variability in nestedness in simulated networks than the configuration model. So p-values obtained from each model have a different interpretation...
+
+### Randomization using the EDD model: modularity, EDD vs. configuration
+Another example of use of the EDD model, this time to assess the significance of modularity.
+
+```{r}
+foodweb_EDD<-lapply(1:1000, function(x) randomize.EDD(one_comp_foodweb))
+mods_EDD<-sapply(1:1000, function(x) cluster_leading_eigen(as.undirected(foodweb_EDD[[x]]))$mod)
+p.val(one_comp_foodweb_LE.mod$mod,mods_EDD,method="larger",label="modularity")
+```
+
+Again, we can compare the distribution of modularity scores generated by the EDD model (green) and the configuration model (blue).
+
+```{r}
+plot(density(mods_configs),xlim=c(min(mods_configs,mods_EDD),max(mods_configs,mods_EDD)),xlab="",main="modularity distributions",col="blue")
+lines(density(mods_EDD),col="darkgreen")
+```
+
+This time, it is not only the extent of the distribution, but also its mean and mode that are completely shifted by the change in underlying null model.
+
+# References
+
+Barrett, S. C. & Helenurm, K. (1987) The reproductive biology of boreal forest herbs. I. Breeding systems and pollination. Canadian Journal of Botany, 65, 2036-2046.
+
+Blüthgen, N., Menzel, F. & Blüthgen, N. (2006) Measuring specialization in species interaction networks. BMC ecology, 6, 9.
+
+Clauset, A., Shalizi, C. R. & Newman, M. E. J. (2009) Power-law distributions in empirical data. SIAM Review, 51, 661-703.
+
+Cruz-Escalona, V. H., Arreguín-Sánchez, F. & Zetina-Rejón, M. (2007) Analysis of the ecosystem structure of Laguna Alvarado, western Gulf of Mexico, by means of a mass balance model. Estuarine, Coastal and Shelf Science, 72, 155-167.
+
+Dunne, J. A., Williams, R. J. & Martinez, N. D. (2002) Food-web structure and network theory: The role of connectance and size. Proceedings of the National Academy of Sciences, 99, 12917-12922.
+
+Dunne, J. A., Williams, R. J. & Martinez, N. D. (2002) Network structure and biodiversity loss in food webs: robustness increases with connectance. Ecology Letters, 5, 558-567.
+
+James, A., Pitchford, J. W. & Plank, M. J. (2012) Disentangling nestedness from models of ecological complexity. Nature, 487, 227-230.
+
+Leger, J.-B., Daudin, J.-J. & Vacher, C. (2015) Clustering methods differ in their ability to detect patterns in ecological networks. Methods in Ecology and Evolution, 6, 474-481.
+
+Lewinsohn, T. M., Prado, P. I., Jordano, P., Bascompte, J. & Olesen, J. M. (2006) Structure in plant-animal interaction assemblages. Oikos, 113, 174-184.
+
+MacKay, R. S., Johnson, S. & Sansom, B. (2020) How directed is a directed network? Royal Society Open Science, 7, 201138.
+
+Massol, F., Dubart, M., Calcagno, V., Cazelles, K., Jacquet, C., Kéfi, S. & Gravel, D. (2017) Island biogeography of food webs. Advances in Ecological Research vol. 56 - Networks of Invasion: A Synthesis of Concepts (eds D. A. Bohan, A. J. Dumbrell & F. Massol), pp. 183-262. Academic Press.
+
+Newman, M. E. J. (2006) Modularity and community structure in networks. Proceedings of the National Academy of Sciences, 103, 8577-8582.
+
+Pocock, M. J. O., Evans, D. M. & Memmott, J. (2012) The robustness and restoration of a network of ecological networks. Science, 335, 973-977.
+
+Payrató-Borràs, C., Hernández, L. & Moreno, Y. (2019) Breaking the Spell of Nestedness: The Entropic Origin of Nestedness in Mutualistic Systems. Physical Review X, 9, 031024.
+
+Podani, J. & Schmera, D. (2012) A comparative evaluation of pairwise nestedness measures. Ecography, 35, 889-900.
+
+Strona, G., Nappo, D., Boccacci, F., Fattorini, S. & San-Miguel-Ayanz, J. (2014) A fast and unbiased procedure to randomize ecological binary matrices with fixed row and column totals. Nature Communications, 5.
+
+Stumpf, M. P. H. & Porter, M. A. (2012) Critical truths about power laws. Science, 335, 665-666.
+
+von Luxburg, U. (2007) A tutorial on spectral clustering. Statistics and Computing, 17, 395-416.
+
+Williams, R. J. & Martinez, N. D. (2000) Simple rules yield complex food webs. Nature, 404, 180-183.
+
+Yang, Z., Algesheimer, R. & Tessone, C. J. (2016) A Comparative Analysis of Community Detection Algorithms on Artificial Networks. Scientific Reports, 6, 30750.
+
+
+
+
+
+
