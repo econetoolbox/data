@@ -1,4 +1,4 @@
-setwd("C:\\Massol\\Enseignement\\Formation réseaux\\Formation EcoNet 2024")
+setwd("C:\\Massol\\Enseignement\\Formation rï¿½seaux\\Formation EcoNet 2025")
 rm(list=ls())
 
 # Special installs (unhide if needed; also, check Rtools installation if issues appear)
@@ -14,7 +14,7 @@ source('functions.R')
 
 ## Loading data
 
-#food web from Cruz-Escalona, V. H., Arreguín-Sánchez, F. & Zetina-Rejón, M. (2007) Analysis of the ecosystem structure of Laguna Alvarado, western Gulf of Mexico, by means of a mass balance model. Estuarine, Coastal and Shelf Science, 72, 155-167.
+#food web from Cruz-Escalona, V. H., Arreguï¿½n-Sï¿½nchez, F. & Zetina-Rejï¿½n, M. (2007) Analysis of the ecosystem structure of Laguna Alvarado, western Gulf of Mexico, by means of a mass balance model. Estuarine, Coastal and Shelf Science, 72, 155-167.
 
 mat_foodweb<-t(as.matrix(mg1[[1]][[223]]))
 rownames(mat_foodweb)<-names(mg1[[1]][[223]])
@@ -89,7 +89,25 @@ tl.1<-trophic_levels(largest_component(foodweb))
 plot(TrophicLevels(as_Community(largest_component(foodweb),"."))[,1],tl.1[,1],xlab="ShortestTL",ylab="MacKayTL")
 plot(TrophicLevels(as_Community(largest_component(foodweb),"."))[,6],tl.1[,1],xlab="PreyAveragedTL",ylab="MacKayTL")
 
-#### modularity & clustering
+#### generalism, network specialization
+
+### node specialization/generalism from Blï¿½thgen's index
+dfun(mat_plantpol)
+plot(degree(pollination)[!V(pollination_bin)$type],dfun(mat_plantpol)$dprime,xlab="degrees",ylab="d'")
+
+dfun(t(mat_plantpol))
+plot(degree(pollination)[V(pollination_bin)$type],dfun(t(mat_plantpol))$dprime,xlab="degrees",ylab="d'")
+
+foodweb_spe.res<-dfun(mat_foodweb)$dprime #as resource
+foodweb_spe.con<-dfun(t(mat_foodweb))$dprime #as consumer
+interm_species_list<-intersect(names(foodweb_spe.res),names(foodweb_spe.con))
+plot(foodweb_spe.res[which(names(foodweb_spe.res)%in%interm_species_list)],foodweb_spe.con[which(names(foodweb_spe.con)%in%interm_species_list)],xlab="d' as prey",ylab="d' as consumer")
+
+### network specialization
+H2fun(mat_plantpol)
+
+
+#### modularity, clustering, nestedness
 ### modularity
 foodweb_EB.mod<-cluster_edge_betweenness(undirected_foodweb)
 foodweb_LE.mod<-cluster_leading_eigen(undirected_foodweb)
@@ -130,22 +148,6 @@ plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodw
 modularity(undirected_foodweb,foodweb_SC)
 
 
-#### generalism, network specialization, nestedness
-
-### node specialization/generalism from Blüthgen's index
-dfun(mat_plantpol)
-plot(degree(pollination)[!V(pollination_bin)$type],dfun(mat_plantpol)$dprime,xlab="degrees",ylab="d'")
-
-dfun(t(mat_plantpol))
-plot(degree(pollination)[V(pollination_bin)$type],dfun(t(mat_plantpol))$dprime,xlab="degrees",ylab="d'")
-
-foodweb_spe.res<-dfun(mat_foodweb)$dprime #as resource
-foodweb_spe.con<-dfun(t(mat_foodweb))$dprime #as consumer
-interm_species_list<-intersect(names(foodweb_spe.res),names(foodweb_spe.con))
-plot(foodweb_spe.res[which(names(foodweb_spe.res)%in%interm_species_list)],foodweb_spe.con[which(names(foodweb_spe.con)%in%interm_species_list)],xlab="d' as prey",ylab="d' as consumer")
-
-### network specialization
-H2fun(mat_plantpol)
 
 ### nestedness
 pollination_nestdness<-nested(mat_plantpol, method = "ALL", rescale=TRUE, normalised=TRUE)
@@ -334,7 +336,6 @@ p.val(one_comp_foodweb_LE.mod$mod,mods_EDD,method="larger",label="modularity")
 
 plot(density(mods_configs),xlim=c(min(mods_configs,mods_EDD),max(mods_configs,mods_EDD)),xlab="",main="modularity distributions",col="blue")
 lines(density(mods_EDD),col="darkgreen")
-
 
 
 

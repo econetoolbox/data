@@ -8,6 +8,7 @@ library(sbm)
 library(alluvial)
 library(econetwork)
 library(poweRlaw)
+library(maxnodf)
 
 ### Simulating food webs
 
@@ -123,6 +124,7 @@ randomize.BChungLu<-function(bipmat){ #bipmat is an existing bipartite matrix, t
   apply(p,c(1,2),function(x) rbinom(1,size = 1,prob = min(x,1)))
 }
 
+
 randomize.BEDD<-function(bipmat){ #same as Chung-Lu, but using distributions of degrees rather than actual degrees
 	s<-sum(bipmat)
 	m1<-apply(bipmat,1,sum)
@@ -139,11 +141,65 @@ randomize.BEDD<-function(bipmat){ #same as Chung-Lu, but using distributions of 
 	matrix(rbinom(d1*d2, 1, p), d1, d2)
 }
 
-randomize.EDD<-function(graph){ #same as above on undirected graphs
-	if(is_directed(graph)){
-		graph<-as.undirected(graph)
+randomize.wBEDD_poisson<-function(bipmat){ #randomization for a weighted BEDD following a Poisson distribution
+	s<-sum(bipmat)
+	m1<-apply(bipmat,1,sum)
+	d1<-length(m1)
+	m2<-apply(bipmat,2,sum)
+	d2<-length(m2)
+	rho<-s/(d1*d2)
+	mset1<-ecdf(m1*d2/s)
+	mset2<-ecdf(m2*d1/s)
+	sample1<-quantile(mset1,probs=runif(d1))
+	sample2<-quantile(mset2,probs=runif(d2))
+	p <- rho * sample1 %o% sample2
+	par(mfrow=c(3,2))
+	plot(mset1)
+	plot(mset2)
+	plot(density(m1))
+	plot(density(m2))
+	plot(density(apply(p,1,sum)))
+	plot(density(apply(p,2,sum)))
+	res<-matrix(rpois(d1*d2, p), d1, d2)
+	if(one_component(res)){ 
+		res
 	}
-	adjmat<-as_adj(graph,sparse=FALSE)
+	else{
+		randomize.wBEDD_poisson(bipmat)
+	}
+}
+
+randomize.wBEDD_ZIP<-function(bipmat){ #randomization for a weighted BEDD following a Zero-Inflated Poisson distribution
+	s<-sum(bipmat)
+	m1<-apply(bipmat,1,sum)
+	d1<-length(m1)
+	m2<-apply(bipmat,2,sum)
+	d2<-length(m2)
+	mu<-mean((as.vector(bipmat)))
+	v<-var((as.vector(bipmat)))
+	lambda<-mu-1+(v/mu)
+	pz<-(v-mu)/(v+mu^2-mu)
+	mset1<-ecdf(m1*d2/s)
+	mset2<-ecdf(m2*d1/s)
+	sample1<-quantile(mset1,probs=runif(d1))
+	sample2<-quantile(mset2,probs=runif(d2))
+	p <- lambda * sample1 %o% sample2
+	nz<- check_mat(pz * rep(1,d1) %o% rep(1,d2))
+	res<-matrix(rbinom(d1*d2,1,1-nz)*rpois(d1*d2, p), d1, d2)
+	if(one_component(res)){ 
+		res
+	}
+	else{
+		randomize.wBEDD_ZIP(bipmat)
+	}
+}
+
+
+randomize.EDD<-function(graph){ #same as above on undirected graphs
+	if(igraph::is_directed(graph)){
+		graph<-igraph::as.undirected(graph)
+	}
+	adjmat<-igraph::as_adj(graph,sparse=FALSE)
 	s<-sum(adjmat)
 	m<-apply(adjmat,1,sum)
 	d<-dim(adjmat)[1]
@@ -155,7 +211,7 @@ randomize.EDD<-function(graph){ #same as above on undirected graphs
 	res<-matrix(rbinom(d*d, 1, p), d, d)
 	res[lower.tri(res,diag=T)] <- 0
 	res <- res + t(res)
-	graph_from_adjacency_matrix(res)
+	igraph::graph_from_adjacency_matrix(res)
 }
 
 
@@ -180,7 +236,7 @@ union_bipartite<-function(list_nets){
 	x<-do.call(igraph::union, list_nets)
 	l<-length(list_nets)
 	type_vec<-sapply(1:l,function(y) paste0("type_",y))
-	or_types<-apply(sapply(1:l, function(k) vertex_attr(x, type_vec[k])),1,any)
+	or_types<-apply(sapply(1:l, function(k) igraph::vertex_attr(x, type_vec[k])),1,any)
 	V(x)$type<-!(is.na(or_types)|!(or_types))
 	x
 }
@@ -193,59 +249,23 @@ as_Community<-function(network,net_name="."){#takes a directed network (with spe
 	names_net<-V(network)$name
 	nodes<-data.frame("node"=names_net,row.names= names_net)
 	properties=list("title"=net_name)
-	tlinks<-as_long_data_frame(network)
+	tlinks<-igraph::as_long_data_frame(network)
 	trophic.links<-as.matrix(tlinks[,c("from_name","to_name")])
 	colnames(trophic.links)<-c("resource", "consumer")
-	Community(nodes, properties, trophic.links)
+	cheddar::Community(nodes, properties, trophic.links)
 }
 #example: ShortestTrophicLevel(as_Community(network,"WTF"))
 
 trophic_levels<-function(network) { #based on MacKay et al. 2020
 	lap<-corrected_laplacian(network)
-	imbalance<-degree(network,mode="in")-degree(network,mode="out")
+	imbalance<-igraph::degree(network,mode="in")-igraph::degree(network,mode="out")
 	inv(as.matrix(lap)) %*% imbalance
 }
 
-FW_interaction_from_predation<-function(mat,rho){
-	n<-dim(mat)[1]
-	fill<-rnorm_multi(n*(n-1)/2,2,r=rho)
-	ut<-matrix(0,n,n)
-	ut[lower.tri(ut,diag = FALSE)]<-fill[,1]
-	ut<-mat*t(ut)
-	lt<-matrix(0,n,n)
-	lt[lower.tri(lt, diag = FALSE)]<-fill[,2]
-	lt<-(t(mat))*lt
-	ut+lt
-}
-
-layout_as_food_web<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
-	l<-length(V(network))
-	lay<-matrix(nrow=l,ncol=2) 
-	lay[,1]<-layout_with_graphopt(network)[,1]
-	lay[,2]<-TrophicLevels(as_Community(network))[,5]-1
-	lay
-}
-
-layout_as_food_web2<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
-	l<-length(V(network))
-	lay<-matrix(nrow=l,ncol=2) 
-	lay[,1]<-layout_with_graphopt(network)[,1]
-	lay[,2]<-trophic_levels(network)
-	lay
-}
-
-layout_as_food_web3<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
-	l<-length(V(network))
-	lay<-matrix(nrow=l,ncol=2) 
-	lay[,1]<-layout_with_graphopt(network)[,1]
-	lay[,2]<-alt_TL(network)[,3]
-	lay
-}
-
 alt_TL<-function(network){ #yet another implementation of trophic levels
-	undir_net<-as.undirected(network)
-	basals<-which(degree(network,mode="in")==0)
-	dist_mat<-t(distances(network,v=which(degree(network,mode="in")==0),mode="out"))
+	undir_net<-igraph::as.undirected(network)
+	basals<-which(igraph::degree(network,mode="in")==0)
+	dist_mat<-t(igraph::distances(network,v=which(igraph::degree(network,mode="in")==0),mode="out"))
 	s<-dim(dist_mat)[1]
 	shortest_chain<-sapply(1:s,function(x) min_without_inf(dist_mat[x,]))+1
 	longest_chain<-sapply(1:s,function(x) max_without_inf(dist_mat[x,]))+1
@@ -259,8 +279,74 @@ alt_TL<-function(network){ #yet another implementation of trophic levels
 	res
 }
 
+FW_interaction_from_predation<-function(mat,rho){
+	n<-dim(mat)[1]
+	fill<-faux::rnorm_multi(n*(n-1)/2,2,r=rho)
+	ut<-matrix(0,n,n)
+	ut[lower.tri(ut,diag = FALSE)]<-fill[,1]
+	ut<-mat*t(ut)
+	lt<-matrix(0,n,n)
+	lt[lower.tri(lt, diag = FALSE)]<-fill[,2]
+	lt<-(t(mat))*lt
+	ut+lt
+}
+
+layout_as_food_web<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
+	l<-length(V(network))
+	lay<-matrix(nrow=l,ncol=2) 
+	lay[,1]<-igraph::layout_with_graphopt(network)[,1]
+	lay[,2]<-TrophicLevels(as_Community(network))[,5]-1
+	lay
+}
+
+layout_as_food_web2<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
+	l<-length(V(network))
+	lay<-matrix(nrow=l,ncol=2) 
+	lay[,1]<-igraph::layout_with_graphopt(network)[,1]
+	lay[,2]<-trophic_levels(network)
+	lay
+}
+
+layout_as_food_web3<-function(network){#adapted from Jon Borelli's code https://assemblingnetwork.wordpress.com/2013/04/03/more-food-web-plotting-with-r/
+	l<-length(V(network))
+	lay<-matrix(nrow=l,ncol=2) 
+	lay[,1]<-igraph::layout_with_graphopt(network)[,1]
+	lay[,2]<-alt_TL(network)[,3]
+	lay
+}
+
+layout_as_food_web3bis<-function(network){
+	l<-length(V(network))
+	lay<-matrix(nrow=l,ncol=2) 
+	lay[,2]<-alt_TL(network)[,3]
+	n<-table(lay[,2])
+	vals<-sort(unique(lay[,2]))
+	for(i in 1:length(n)){
+		locations<-which(lay[,2]==vals[i])
+		lay[locations,1]<-(1:n[i])/n[i]
+	}
+	lay
+}
+
+layout_as_food_web4<-function(network){
+	graphlayouts::layout_with_constrained_stress(network,coord = alt_TL(network)[,3],fixdim = "y")
+}
+
+layout_as_food_web5<-function(network){
+	igraph::layout_with_gem(network,coords=layout_as_food_web3(network))
+}
+
+
 
 ### other utilities
+
+automatic_naming<-function(network){
+	n<-igraph::gorder(network)
+	net<-network
+	V(net)$name<-sapply(1:n,function(x) paste0("sp_",x))
+	net
+}
+
 min_without_inf<-function(vec){
 	min(vec[!is.infinite(vec)])
 }
@@ -293,8 +379,15 @@ p.val<-function(test_val,test_collection,method="larger",label=""){#compute a p-
 	
 }
 
+series_randomize<-function(mat,randomization,nsim = 100){#function to obtain a collection of null matrices from a single one. randomization should be a character string indicating the null model function (e.g. "randomize.wBEDD_poisson")
+	dd<-c(dim(mat),nsim)
+	f<-get(randomization)
+	res.list<-lapply(1:nsim,function(x) f(mat))
+	array(unlist(res.list),dim=dd)
+}
+
 corrected_laplacian<-function(network){
-	lap<-laplacian_matrix(network)
+	lap<-igraph::laplacian_matrix(network)
 	lap+diag(degree(network,mode="in"))
 }
 
@@ -302,12 +395,17 @@ to_upper_triangular<-function(mat){
 	upper.tri(mat, diag = FALSE)*mat
 }
 
+thresh_mat<-function(x, threshold){# x is a matrix #function to generate a binary matrix based on a minimum threshold
+	d<-dim(x)
+	matrix(sapply(x,function(u) ifelse(u>threshold,1,u)),nrow=d[1],ncol=d[2])
+}
+
 make_alluvial_2<-function(classif1,classif2,name1,name2){
 	A <- as.data.frame(table(classif1,classif2))
 	colnames(A) = c(name1,name2,"Freq")
 	w   <- which(A$Freq != 0)
 	A <- A[w,]
-	alluvial(A[,c(1,2)],freq = A$Freq)
+	alluvial::alluvial(A[,c(1,2)],freq = A$Freq)
 }
 
 qtrunc <- function(p, spec, a = -Inf, b = Inf, ...){#copied from Nadarajah & Kotz 2006
@@ -320,11 +418,11 @@ qtrunc <- function(p, spec, a = -Inf, b = Inf, ...){#copied from Nadarajah & Kot
 
 spectral_clustering <- function(graph, nb_cluster, normalized = TRUE) {#from J. Chiquet's git page https://jchiquet.github.io/MAP566/docs/mixture-models/map566-lecture-graph-clustering-part1.html
   
-  ## Compute Laplcian matrix
-  L <- laplacian_matrix(graph, normalized = normalized) 
+  ## Compute Laplacian matrix
+  L <- igraph::laplacian_matrix(graph, normalized = normalized) 
   ## Generates indices of last (smallest) K vectors
   selected <- rev(1:ncol(L))[1:nb_cluster] 
-  ## Extract an normalized eigen-vectors
+  ## Extract n normalized eigen-vectors
   U <- eigen(L)$vectors[, selected, drop = FALSE]  # spectral decomposition
   U <- sweep(U, 1, sqrt(rowSums(U^2)), '/')    
   ## Perform k-means
@@ -334,8 +432,8 @@ spectral_clustering <- function(graph, nb_cluster, normalized = TRUE) {#from J. 
 }
 
 laplacian_spectral_gap<- function(graph){
-	L <- laplacian_matrix(graph, normalized = TRUE)
-	comps<-count_components(graph)
+	L <- igraph::laplacian_matrix(graph, normalized = TRUE)
+	comps<-igraph::count_components(graph)
 	lambdas <- sort(eigen(L)$values)
 	l<-length(lambdas)
 	s_gaps<-lambdas[-1]-lambdas[-l]
@@ -355,7 +453,7 @@ generate_degseq_unipartite<-function(n,quant_fun="qpois", ...){
 	p_s<-(1:n-0.5)/n
 	d_s<-get(quant_fun)(p=p_s,...)
 	#print(d_s)
-	if(!is_graphical(d_s)){
+	if(!igraph::is_graphical(d_s)){
 		sp<-substring(quant_fun,first=2)
 		trun<-1
 		while(!is_graphical(d_s)){
@@ -372,19 +470,19 @@ generate_degseq_unipartite<-function(n,quant_fun="qpois", ...){
 ### configuration model
 
 config_VL<-function(graph,nsim = 100){#configuration model for binary networks; built upon vegan and igraph
-	if(is_igraph(graph)){
-		if((is_weighted(graph))||(!is_simple(graph))){
+	if(igraph::is_igraph(graph)){
+		if((igraph::is_weighted(graph))||(!igraph::is_simple(graph))){
 			print("graph is not simple, can't do")
 		}
-		else if(is_bipartite(graph)){
+		else if(igraph::is_bipartite(graph)){
 			print("bipartite graph detected")
-			incidence<-as.matrix(as_biadjacency_matrix(graph))
-			configs<-simulate(vegan::nullmodel(incidence,"curveball"),nsim=nsim) 
-			lapply(1:nsim,function(x) graph_from_biadjacency_matrix(configs[,,x]))
+			incidence<-as.matrix(igraph::as_biadjacency_matrix(graph))
+			configs<-vegan::simulate(vegan::nullmodel(incidence,"curveball"),nsim=nsim) 
+			lapply(1:nsim,function(x) igraph::graph_from_biadjacency_matrix(configs[,,x]))
 		}
 		else{
 			print("unipartite graph detected")
-			lapply(1:nsim, function(x) sample_degseq(degree(graph), method = "vl"))
+			lapply(1:nsim, function(x) igraph::sample_degseq(igraph::degree(graph), method = "vl"))
 		}
 	}
 	else if(is.matrix(graph)){
@@ -398,8 +496,8 @@ config_VL<-function(graph,nsim = 100){#configuration model for binary networks; 
 		}
 		else{
 			print("bipartite graph detected")
-			configs<-simulate(vegan::nullmodel(graph,"curveball"),nsim=nsim) 
-			lapply(1:nsim,function(x) graph_from_biadjacency_matrix(configs[,,x]))
+			configs<-vegan::simulate(vegan::nullmodel(graph,"curveball"),nsim=nsim) 
+			lapply(1:nsim,function(x) igraph::graph_from_biadjacency_matrix(configs[,,x]))
 		}
 	}
 	else{
