@@ -1,9 +1,7 @@
 library(bipartite)
 library(igraph)
-#library(FWebs)
 library(vegan)
 library(cheddar)
-#library(matlib)
 library(sbm)
 library(alluvial)
 library(econetwork)
@@ -11,8 +9,6 @@ library(poweRlaw)
 library(NetIndices)
 library(ggplot2)
 library(rnetcarto)
-#library(maxnodf)
-#library(NetworkExtinction)
 
 ### Simulating food webs
 

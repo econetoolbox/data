@@ -45,30 +45,6 @@ fw.metrics(list(list(mat_foodweb)))
 # and from bipartite
 networklevel(mat_plantpol)
 
-#### degrees, etc.
-degree(foodweb)
-degree(foodweb,mode="in")
-degree(foodweb,mode="out")
-
-###Plot degree distribution
-hist(degree(foodweb),breaks=0:max(degree(foodweb)))
-plot(degree_distribution(foodweb, cumulative = TRUE),type="l")
-dd.fw(list(as.data.frame(mat_foodweb)), log = FALSE, cumulative = TRUE)
-
-###Comparison of degree distribution
-ks.test(degree(foodweb),"pbinom",size=length(V(foodweb)),prob=mean(degree(foodweb))/length(V(foodweb)))
-
-ks.test(degree(foodweb),"ppois",lambda=mean(degree(foodweb)))
-
-ks.test(degree(foodweb),"pnbinom",mu = mean(degree(foodweb)), size = mean(degree(foodweb))^2/(var(degree(foodweb))-mean(degree(foodweb))))
-
-#### Compute the connectance of the empirical network
-DirectedConnectance(as_Community(foodweb)) 
-mean(as_adj(undirected_foodweb,sparse=FALSE))/2
-mean(as_adj(foodweb,sparse=FALSE))
-fw.metrics(list(list(as_adj(foodweb,sparse=FALSE))))$connectance
-(dim(undirected_foodweb[,])[1]/(dim(undirected_foodweb[,])[1]-1))*mean(as_adj(undirected_foodweb,sparse=FALSE))/2
-
 #### trophic levels
 ### classic measures
 foodweb_TL<-TrophicLevels(as_Community(foodweb))
@@ -115,20 +91,20 @@ plot(foodweb_LE.mod,foodweb,layout = layout_as_food_web(foodweb))
 plot(foodweb_ML.mod,foodweb,layout = layout_as_food_web(foodweb))
 plot(foodweb_SA.mod,foodweb,layout = layout_as_food_web(foodweb))
 
-plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_ML.mod$membership,"col"=foodweb_ML.mod$membership))
 plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_SA.mod$membership,"col"=foodweb_SA.mod$membership))
 
 make_alluvial_2(foodweb_ML.mod$membership,foodweb_LE.mod$membership,"Louvain","Leading_eigen")
-make_alluvial_2(foodweb_ML.mod$membership,foodweb_EB.mod$membership,"Louvain","Edge_betweenness")
 make_alluvial_2(foodweb_ML.mod$membership,foodweb_SA.mod$membership,"Louvain","Simulated annealing")
 
 pollination_LE.mod<-cluster_leading_eigen(pollination_bin)
+
 plotMyMatrix(mat_plantpol_bin,clustering=list("row"=pollination_LE.mod$membership[!V(pollination_bin)$type],"col"=pollination_LE.mod$membership[V(pollination_bin)$type]))
 
 pollination_SA.mod<-cluster_netcarto(pollination_bin)
+
 plotMyMatrix(mat_plantpol_bin,clustering=list("row"=pollination_SA.mod$membership[!V(pollination_bin)$type],"col"=pollination_SA.mod$membership[V(pollination_bin)$type]))
 
-make_alluvial_2(pollination_LE.mod$membership,pollination_SA.mod$membership,"Leading_eigen","Simulated annealing")
+#make_alluvial_2(pollination_LE.mod$membership,pollination_SA.mod$membership,"Leading_eigen","Simulated annealing")
 
 
 ### spectral clustering
@@ -141,13 +117,8 @@ foodweb_SC<-spectral_clustering(undirected_foodweb,foodweb_SG$optim_n)
 plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_SC,"col"=foodweb_SC))
 
 modularity(undirected_foodweb,foodweb_SC)
-make_alluvial_2(foodweb_SA.mod$membership,foodweb_SC,"Simulated annealing","Spectral clustering")
 
-foodweb_SC<-spectral_clustering(undirected_foodweb,6)
-plotMyMatrix(as_adj(undirected_foodweb,sparse=FALSE),clustering=list("row"=foodweb_SC,"col"=foodweb_SC))
 make_alluvial_2(foodweb_SA.mod$membership,foodweb_SC,"Simulated annealing","Spectral clustering")
-
-modularity(undirected_foodweb,foodweb_SC)
 
 
 ### nestedness
@@ -170,15 +141,17 @@ i_index <- seq(from = 0, to = 0.95, by =0.05)
 prob_exp<-exponent.removal(degree(netw,mode="out"), i_index)
 netw_iterate_deg<-iterate(fw_to_attack=netw, prob_exp, alpha1=50, iter=10, i_index, plot = TRUE)
 
+###on true data
+prob_exp_FW<-exponent.removal(degree(foodweb,mode="out"), i_index)
+fw_iterate_deg<-iterate(fw_to_attack=foodweb, prob_exp_FW, alpha1=50, iter=20, i_index, plot = TRUE)
+
 prob_exp<-exponent.removal(trophic_levels(netw), i_index)
-netw_iterate_TL<-iterate(fw_to_attack=netw, prob_exp, alpha1=50, iter=10, i_index, plot = TRUE)
+netw_iterate_TL<-iterate(fw_to_attack=netw, prob_exp, alpha1=50, iter=20, i_index, plot = TRUE)
 
 foodweb_TL<-as.data.frame(TrophicLevels(as_Community(foodweb)))
 prob_exp_FW<-exponent.removal(foodweb_TL$LongestTL, i_index)
-fw_iterate_TL<-iterate(fw_to_attack=foodweb, prob_exp_FW, alpha1=50, iter=50, i_index, plot = TRUE)
+fw_iterate_TL<-iterate(fw_to_attack=foodweb, prob_exp_FW, alpha1=50, iter=20, i_index, plot = TRUE)
 
-prob_exp_FW<-exponent.removal(degree(foodweb,mode="out"), i_index)
-fw_iterate_deg<-iterate(fw_to_attack=foodweb, prob_exp_FW, alpha1=50, iter=50, i_index, plot = TRUE)
 
 #### beta diversity of networks
 
@@ -198,7 +171,7 @@ disPairwise(gList, type='Pi')
 
 
 
-##### Null models
+##### Network models
 
 #### configuration models, degree sequences
 ### randomize unipartite network from degree sequence (Viger-Latapy's method)
@@ -304,7 +277,6 @@ plot(net,layout=layout_as_food_web3(net))
 
 net<-generate_DM_model(450,0.1,quant_fun="qpois", lambda=7)
 hist(degree(net),breaks=0:max(degree(net)),main="")
-
 ks.test(degree(net),"ppois",lambda = mean(degree(net)))
 
 
@@ -353,6 +325,28 @@ lines(density(mods_EDD),col="darkgreen")
 
 
 
+##################TRASH (old versions of the script)
+#### degrees, etc.
+degree(foodweb)
+degree(foodweb,mode="in")
+degree(foodweb,mode="out")
 
+###Plot degree distribution
+hist(degree(foodweb),breaks=0:max(degree(foodweb)))
+plot(degree_distribution(foodweb, cumulative = TRUE),type="l")
+dd.fw(list(as.data.frame(mat_foodweb)), log = FALSE, cumulative = TRUE)
 
+###Comparison of degree distribution
+ks.test(degree(foodweb),"pbinom",size=length(V(foodweb)),prob=mean(degree(foodweb))/length(V(foodweb)))
+
+ks.test(degree(foodweb),"ppois",lambda=mean(degree(foodweb)))
+
+ks.test(degree(foodweb),"pnbinom",mu = mean(degree(foodweb)), size = mean(degree(foodweb))^2/(var(degree(foodweb))-mean(degree(foodweb))))
+
+#### Compute the connectance of the empirical network
+DirectedConnectance(as_Community(foodweb)) 
+mean(as_adj(undirected_foodweb,sparse=FALSE))/2
+mean(as_adj(foodweb,sparse=FALSE))
+fw.metrics(list(list(as_adj(foodweb,sparse=FALSE))))$connectance
+(dim(undirected_foodweb[,])[1]/(dim(undirected_foodweb[,])[1]-1))*mean(as_adj(undirected_foodweb,sparse=FALSE))/2
 
