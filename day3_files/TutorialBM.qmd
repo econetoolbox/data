@@ -1,8 +1,8 @@
 ---
 title: "Tutorial on Stochastic Block Models"
-subtitle: "April 2024"
+subtitle: "April 2025"
 author: "Econet group"
-date: "04/24/2024"
+date: "April 2025"
 output:
   rmarkdown::html_vignette:
   toc: true
@@ -74,26 +74,26 @@ connectParam <- list(mean = diag(.4, 3) + 0.05) # connectivity matrix: affiliati
 We can now simulate with the `sampleSimpleSBM` function.
 
 ```{r simulation  communities}
-mySampler <- sampleSimpleSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'bernoulli',directed = TRUE, dimLabels = 'Species')
-mySampler
+mySimNet <- sampleSimpleSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'bernoulli',directed = TRUE, dimLabels = 'Species')
+mySimNet
 ```
 
 We represent the data using either the adjacency matrix or the graphe representation.
 
 ```{r communities plot}
 colSet <- RColorBrewer::brewer.pal(n = 8, name = "Set2") 
-GGally::ggnet2(mySampler$networkData,label = TRUE,color=colSet[1])
+GGally::ggnet2(mySimNet$networkData,label = TRUE,color=colSet[1])
 
 plotOptions <- list(colNames = TRUE, rowNames = TRUE)
-sbm::plotMyMatrix(mySampler$networkData,dimLabels = list(row = "species", col = "species"),plotOptions = plotOptions)
+sbm::plotMyMatrix(mySimNet$networkData,dimLabels = list(row = "species", col = "species"),plotOptions = plotOptions)
 ```
 
 A few modification as to be done if we want to highlight the blocs.
 
 ```{r plot commu with colors}
-U <- order(mySampler$memberships)
-Z <- mySampler$memberships[U]
-myMat <- mySampler$networkData[U,U]
+U <- order(mySimNet$memberships)
+Z <- mySimNet$memberships[U]
+myMat <- mySimNet$networkData[U,U]
 net = network(myMat, directed = TRUE)
 my_color_nodes_col <- my_color_nodes <- rep(colSet[1],nbNodes)
 for (k in 2:K){
@@ -121,17 +121,39 @@ means[3,2] = means[1,4] = 0
 connectParam <- list(mean = means)
 
 ```
-```{r, eval = FALSE, echo = FALSE }
 
-mySampler2 <- sampleBipartiteSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'poisson', dimLabels = c('books','readers'))
-mySampler
+```{r, eval = TRUE, echo = FALSE }
+
+myBipartiteNet <- sampleBipartiteSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'poisson', dimLabels = c('books','readers'))
+myBipartiteNet
+
 ```
 
+Plot your network as a matrix.  
 
 
-# 2. Analyzing an ecological data set
+# 2. Inference on simulated data
 
-## 2.A. The data set: antagonistic tree/fungus interaction network
+**Exercice** Use the inference functions to estimate the parameters of your simulated networks. 
+
+```{r estim sim simple}
+resInf_Net <- estimateSimpleSBM(netMat = mySimNet$networkData,model = "bernoulli",
+                    dimLabels ='species', 
+                    estimOptions = list(verbosity = 1))
+                                        
+```
+
+Comparer les clusters estimés aux vrais clusters (simulés). 
+
+Si vous avez le temps, diminuez le nombre de noeuds.  
+
+Faire de même pour votre réseau bipartite. 
+
+
+
+# 3. Analyzing an ecological data set
+
+## 3.A. The data set: antagonistic tree/fungus interaction network
 
 We consider the fungus-tree interaction network studied by @tree_fungus_network, available with the package `sbm` :
 
@@ -153,7 +175,7 @@ It is a list with the following entries:
 We first consider the tree-tree interactions resulting into a Simple Network.
 Then we consider the bipartite network between trees and fungi.
 
-## 2.B. Analysis of the tree/tree data
+## 3.B. Analysis of the tree/tree data
 
 ### 2.B.1 Tree-tree binary interaction networks
 
@@ -253,7 +275,7 @@ mySimpleSBM$setModel(5)
 
 
 
-### 2.B.3  Analysis of the weighted interaction network
+### 3.B.3  Analysis of the weighted interaction network
 
 Instead of considering the binary network tree-tree we may consider the weighted network where the link between two trees is the number of fungi they share.
 
@@ -328,7 +350,7 @@ P <- plotAlluvial(listMemberships)
 
 
 
-### 2.B.4 Introduction of covariates
+### 3.B.4 Introduction of covariates
 
 We have on each pair of trees 3 covariates, namely the genetic distance, the taxonomic distance and the geographic distance.
 Each covariate has to be introduced as a matrix: $X^k_{ij}$ corresponds to the value of the $k$-th covariate describing the couple $(i,j)$.
@@ -384,7 +406,7 @@ listMemberships$weightedCov <- mySimpleSBMCov$memberships
 plotAlluvial(listMemberships)
 ```
 
-## 2.C Analysis of the tree/fungi data
+## 3.C Analysis of the tree/fungi data
 
 We now analyze the bipartite tree/fungi interactions.
 The incidence matrix can be plotted with the function \code{plotMyMatrix}
@@ -431,31 +453,32 @@ plot(myBipartiteSBM, type = "expected")
 
 
 
-# 3.  The Shiny application
+<!-- # 3.  The Shiny application -->
 
-We (T. Vanrenterghem (INRAE))  are developing a Shiny application to help people use our package. 
-
-
-  - You can either use it online [here](https://shiny.migale.inrae.fr/app/ShinySBM).
-  - Or install it on your machine
-
-```{r install shiny, eval = FALSE}
-remotes::install_github("Jo-Theo/shinySbm")
-shinySbm::run_app()
-``` 
-
-**Exercice** 
-Simulate your own network and perform the inference. Are you able to recover the blocks? 
+<!-- We (T. Vanrenterghem (INRAE))  are developing a Shiny application to help people use our package.  -->
 
 
+<!--   - You can either use it online [here](https://shiny.migale.inrae.fr/app/ShinySBM). -->
+<!--   - Or install it on your machine -->
 
-**Exercice** Test the Shiny app with your own data set or in the one of the @thompson2003impacts paper (available in the colSBM package).
-```{r run On foddweb, eval = FALSE}
-remotes::install_github("Chabert-Liddell/colSBM")
-library(colSBM)
-data("foodwebs")
-write.csv(foodwebs[[1]],file="myNetwork.csv") 
-```
+<!-- ```{r install shiny, eval = FALSE} -->
+<!-- remotes::install_github("Jo-Theo/shinySbm") -->
+<!-- library(shinySbm) -->
+<!-- shinySbmApp() -->
+<!-- ```  -->
+
+<!-- **Exercice**  -->
+<!-- Simulate your own network and perform the inference. Are you able to recover the blocks?  -->
+
+
+
+<!-- **Exercice** Test the Shiny app with your own data set or in the one of the @thompson2003impacts paper (available in the colSBM package). -->
+<!-- ```{r run On foddweb, eval = FALSE} -->
+<!-- remotes::install_github("Chabert-Liddell/colSBM") -->
+<!-- library(colSBM) -->
+<!-- data("foodwebs") -->
+<!-- write.csv(foodwebs[[1]],file="myNetwork.csv")  -->
+<!-- ``` -->
 
 
 
