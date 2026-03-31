@@ -1,0 +1,534 @@
+---
+title: "📊 Stochastic Block Models Tutorial"
+subtitle: "Principle"
+author: "Sophie Donnet for the Econet group"
+date: "April 2026"
+format:
+  html:
+    theme: cosmo      # moderne et clair
+    toc: true
+    toc-depth: 3
+    code-fold: true   # permet de replier les blocs de code
+    code-summary: "Show code"
+    secnumdepth: 2
+    smooth-scroll: true
+    highlight-style: github
+    df-print: paged
+    embed-resources: true
+editor: visual
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+collapse = TRUE,
+comment = "#>"
+)
+```
+
+```{r wd, eval = TRUE, echo = FALSE}
+
+```
+
+# 0. Requirements
+
+This tutorial illustrates the use of block models for the analysis of (ecological) network. It is mainly based on the vignette of the package `sbm`. The package is on the CRAN. Its development version is on [Github](https://github.com/GrossSBM/sbm).
+
+```{r install, message=FALSE, warning=FALSE, eval=FALSE, echo = FALSE}
+install.packages("sbm")
+install.packages("GGally") # To plot networks
+install.packages('network')
+install.packages('RColorBrewer') # to have nice colors
+install.packages('knitr') # to plot nice tables
+```
+
+The packages required for the analysis are `sbm` plus some others for data manipulation and representation:
+
+```{r setup, message=FALSE, warning=FALSE}
+#| code-fold: false
+library(sbm)
+library(ggplot2)
+library(network)
+library(GGally)
+library(RColorBrewer)
+library(knitr)
+library(igraph)
+library(mclust)
+library(patchwork)
+colSet <- RColorBrewer::brewer.pal(n = 8, name = "Set2") 
+```
+
+# 1. First simulation from SBM
+
+In this lab, we explore the network model **Stochastic Block Models (SBM)**.
+
+::: callout-note
+A Stochastic Block Model assumes that nodes belong to latent groups, and connection probabilities depend only on group memberships.
+:::
+
+## 1.1 Simulating a network with the `sbm` package
+
+First define the parameters.
+
+```{r parameter communities, echo=TRUE}
+#| code-fold: false
+K = 3;  # nb of blocks
+blockProp <- c(.25, 0.5 ,.25) # group proportions
+alpha  = diag(.4, 3) + 0.05
+connectParam <- list(mean = alpha) # connectivity matrix: affiliation network
+```
+
+```{r parameter communities print, echo=TRUE}
+#| code-summary: "Show the connectivity matrix"
+print(connectParam$mean)
+```
+
+::: callout-note
+$\alpha$ is a $3 \times 3$ matrix. We set all diagonal entries to $0.45$, representing the intra-block connectance. All off-diagonal entries are small ($0.05$), indicating that block members primarily interact within their own block. This defines a clear community structure.
+:::
+
+We can now simulate with the `sampleSimpleSBM` function.
+
+```{r simulation  communities}
+#| code-fold: false
+nbNodes  <- 100 # nb of vertices 
+mySimNet <- sampleSimpleSBM(nbNodes, 
+                            model = 'bernoulli',
+                            directed = FALSE, 
+                            blockProp = blockProp, 
+                            connectParam = connectParam , 
+                            dimLabels = 'Species')
+```
+
+```{r simulation  communities explore}
+#| code-summary: "Explore the simulated object"
+mySimNet
+str(mySimNet$networkData)
+table(mySimNet$memberships)/nbNodes
+```
+
+## 1.2 Displaying the simulated network with `sbm` and `ggnet`
+
+We represent the data using either the adjacency matrix or the graph representation.
+
+### 1.2.a Adjacency matrix representation
+
+We use the `plotMyMatrix` function of the `sbm`package to display the adjacency matrix.
+
+```{r communities plot adj random}
+#| code-fold: false
+plotOptions <- list(colNames = TRUE, rowNames = TRUE)
+sbm::plotMyMatrix(mySimNet$networkData,
+                  dimLabels = list(row = "species", col = "species"),
+                  plotOptions = plotOptions)
+```
+
+::: callout-tip
+Check the help for `plotMyMatrix` to see all the options that are already available. In addition, the output is a `ggplot` object, so you can modify any features you need afterwards (legend, text size, etc.).
+:::
+
+::: callout-note
+Each node is randomly assigned to one of the three blocks. The structure we intended to simulate is not immediately visible. We need to reorder the nodes by block to reveal it.
+:::
+
+```{r communities plot adj ordered}
+#| code-fold: false
+U <- order(mySimNet$memberships)
+myMat <- mySimNet$networkData[U,U]
+plotMyMatrix(myMat,
+                  dimLabels = list(row = "species", col = "species"),
+                  plotOptions = plotOptions)
+```
+
+```{=html}
+<!--
+> **Remark** Coloring the node labels according to their block requires a bit more work and is not essential, so it can be skipped. 
+-->
+```
+
+```{r communities plot adj ordered color, echo = FALSE, eval  = FALSE}
+#| code-summary: "Code for node labels in color"
+
+Z <- mySimNet$memberships[U]
+
+my_color_nodes_col <- my_color_nodes <- rep(colSet[1],nbNodes)
+for (k in 2:K){
+  my_color_nodes[nbNodes-which(Z==k) + 1] <- colSet[k]
+  my_color_nodes_col[which(Z==k)] <- colSet[k]
+}
+
+plotMyMatrix(myMat,dimLabels = list(row = "species", col = "species"),
+                  plotOptions = plotOptions)+ 
+  theme(axis.text.x = element_text(color=my_color_nodes_col),
+        axis.text.y = element_text(color=my_color_nodes))
+```
+
+### 1.2.b Network representation
+
+`GGally` is a package based on `ggplot2` to plot networks.
+
+```{r plot commu without colors}
+#| code-fold: false
+ggnet2(mySimNet$networkData,label = TRUE,color=colSet[1])
+```
+
+From this first figure, we can guess that the network has the three communities we simulated. We can highlight this structure by coloring nodes according to their block.
+
+```{r plot commu with color}
+#| code-summary: "Coloring the nodes"
+net = network(mySimNet$networkData, directed = FALSE)
+ggnet2(net,
+       node.color =  mySimNet$memberships, 
+       palette = "Set2",
+       label = TRUE,
+       label.size = 3)
+
+```
+
+::: callout-note
+You can also simulate weighted networks using the argument "model=poisson".
+:::
+
+```{r sim poisson, eval=FALSE}
+#| code-summary: "Simulation of a weighted network"
+K = 2;  # nb of blocks
+blockProp <- c(.35, 0.65 ) # group proportions
+alpha  = matrix(0,K,K)
+alpha[1,1] = 10
+alpha[2,1] = 3
+alpha[1,2] = 15
+alpha[2,2] = 5
+connectParam <- list(mean = alpha) 
+nbNodes  <- 40 # nb of vertices 
+mySimPoisson <- sampleSimpleSBM(nbNodes, 
+                            model = 'poisson',
+                            directed = TRUE, 
+                            blockProp = blockProp, 
+                            connectParam = connectParam , 
+                            dimLabels = 'Species')
+plot(mySimPoisson)
+
+```
+
+# 2. Exercices 🧪
+
+## 2.1 Ex 1: Erdos Renyi 🔥
+
+1.  Adapting the previous code, generate a random network with $n=50$ nodes, $K=1$ block and with density $\alpha =  0.5$.
+
+::: callout-note
+This particular model with one block is called the Erdos Reyni model. It is the same as the one you simulated with `igraph`( `igraph::sample_gnm(n=50,m=12)`). With `sample_gnm` you specified the number of edges $m$. Here, we specify a probability of edge, the realized number of edges is random. Note that $$\mathbb{E}[N] = \sum_{i<j}P(X_{ij}=1) = \frac{n(n-1)}{2} \alpha$$
+:::
+
+```{r ER sim}
+#| code-summary: "Correction"
+
+nbNodes = 50
+sim_ER = sampleSimpleSBM(nbNodes,blockProp=c(1/2),connectParam = list(mean=matrix(0.5,1,1)),model="bernoulli",directed  = FALSE)
+```
+
+2.  Transform the adjacency matrix into a graph using `igraph`
+
+::: callout-tip
+Be careful: `sbm` sets `NA` on the diagonal of the adjacency matrix to indicate that self-interactions are ignored. In `igraph`, this diagonal must be set to $0$.
+:::
+
+```{r ER 0 en diag}
+#| code-fold: false
+sim_ER_adj <-  sim_ER$networkData
+diag(sim_ER_adj) <- 0 
+```
+
+```{r ER math to graph}
+#| code-summary: "Correction"
+#| 
+G1 <- graph_from_adjacency_matrix(sim_ER_adj, mode = "undirected")
+```
+
+3.  Count the number of edges. Compare to the previous formula.
+
+```{r ER ecount}
+#| code-summary: "Correction"
+ecount(G1)
+nbNodes*(nbNodes-1)/2*0.5
+```
+
+4.  Display the degree distribution
+
+```{r ER degree}
+#| code-summary: "Correction"
+hist(degree(G1),main="Degree dist.",xlab="Degree") 
+```
+
+::: callout-note
+The degree distribution has a low variability
+:::
+
+4.  Compute the other statistics you learned on Day 1: edge density, diameter, closeness etc....
+
+::: callout-tip
+Quick reminder: try using `edge_density()`, `diameter()`, and `closeness()` from `igraph`.
+:::
+
+```{r ER other stat}
+#| code-summary: "Correction"
+components(G1)                      
+edge_density(G1)
+diameter(G1,unconnected=FALSE)
+diameter(G1, unconnected=TRUE)
+get_diameter(G1, directed=TRUE)
+count_triangles(G1) 
+transitivity(G1)
+```
+
+## 2.2 Ex 2: Community structure 🔥🔥
+
+We now consider the community network we simulated before.
+
+```{r recover Sim COmmu }
+#| code-fold: false
+mySimNet_adj <-  mySimNet$networkData
+diag(mySimNet_adj) <- 0 
+
+G2 <- graph_from_adjacency_matrix(mySimNet_adj, mode="undirected")  
+Z_sim <- mySimNet$memberships
+```
+
+1.  Try to recover the "modules" with the cluster technics seen in Day 2 (cluster_louvain, cluster_edge_betweenness...)
+
+```{r Commu, modules }
+#| code-summary: "Correction" 
+G2_EB.mod<-cluster_edge_betweenness(G2)
+G2_LE.mod<-cluster_leading_eigen(G2)
+G2_ML.mod<-cluster_louvain(G2)
+```
+
+2.  Compare the clusters obtained with the true (simulated ones)?
+
+::: callout-tip
+When willing to compare two clusterings, we can resort to several tools. You saw the alluvial plot in Day 2. You can also compute the Adjusted Rand Index (ARI). ARI is a measure of similarity between two clusterings that corrects for chance, giving a score where 1 means perfect agreement, 0 corresponds to random labeling, and negative values indicate worse-than-random agreement.
+:::
+
+```{r Commu, ARI }
+#| code-summary: "Correction" 
+table(G2_EB.mod$membership,Z_sim)
+adjustedRandIndex(G2_EB.mod$membership,Z_sim)
+adjustedRandIndex(G2_LE.mod$membership,Z_sim)
+adjustedRandIndex(G2_ML.mod$membership,Z_sim)
+```
+
+::: callout-note
+In this particular case, we simulated a really clear structure of communities. As a consequence, these groups are well recovered by any method. If you have time, do the same exercice but simulating a less clear structure: $$\alpha = \left(\begin{array}{ccc} 
+0.4 & 0.2 & 0.2 \\
+0.2 & 0.3 & 0.2\\
+0.2 & 0.2 & 0.35
+\end{array} \right)  $$
+:::
+
+## 2.3 Ex 3: A more complexe structure 🔥🔥🔥
+
+We now propose to simulate a network with a more complex structure.
+
+1.  Simulation Using what you have learned before, simulate a non-oriented network of $n=100$ nodes clustered in $K= 4$ blocks respecting the following organization:
+
+    -   The first block is made of around $10\%$ of the nodes. The other blocks are of approximatively equal size.
+
+    -   Members of Block 1 are highly connected to everybody except Block 4 but including themselves
+
+    -   Members of Block 2 are only highly connected inside their group and to Blocks 1 and 4 but poorly connected to Block 3.
+
+    -   Members of Block 3 are not connected inside their group and only connected to block 1.
+
+    -   Members of Block 4 have very few connections except with block 2.
+
+```{r sim complexe}
+#| code-summary: "Proposition of connection matrix"
+K = 4
+blockProp=c(1/10,3/10,3/10,3/10)
+alpha3 = matrix(0.05,K,K)
+alpha3[1,1:2] =alpha3[1:2,1]  = 0.3
+alpha3[1,3] = alpha3[3,1] = 0.3
+alpha3[2,4] = alpha3[4,2] = 0.3
+
+alpha3[2,2] = 0.4
+alpha3[3,3] = 0.05
+connectParam=list(mean=alpha3)
+nbNodes = 100
+mySimNet3 <- sampleSimpleSBM(nbNodes, 
+                            model = 'bernoulli',
+                            directed = FALSE, 
+                            blockProp = blockProp, 
+                            connectParam =connectParam , 
+                            dimLabels = 'Species')
+plot(mySimNet3)
+
+```
+
+2.  Explore the structure of the network quickly as before. Are the algorithm of community research able to recover the blocks?
+
+```{r complexe explore}
+#| code-summary: "Correction"
+mySimNet3_adj <- mySimNet3$networkData
+diag(mySimNet3_adj) <- 0
+G3 <- graph_from_adjacency_matrix(mySimNet3_adj, mode="undirected")  
+Z_sim3 <- mySimNet3$memberships
+G3_EB.mod<-cluster_edge_betweenness(G3)
+G3_LE.mod<-cluster_leading_eigen(G3)
+G3_ML.mod<-cluster_louvain(G3)
+
+adjustedRandIndex(G3_EB.mod$membership,Z_sim3)
+adjustedRandIndex(G3_LE.mod$membership,Z_sim3)
+adjustedRandIndex(G3_ML.mod$membership,Z_sim3)
+
+```
+
+::: callout-note
+The community detection algorithms are unable to recover the blocks because the blocks are not communities. They encode a more complex structure.
+:::
+
+## 2.4 Ex 4: Foodweb 🔥🔥🔥
+
+Simulate a foodweb (binary directed network) with $5$ trophic levels.
+
+# 3. Simulation of bipartite 🕸️
+
+## 3.1 Code 💻️
+
+`sbm` can also be used to simulate bipartite networks. Here is an example.
+
+```{r parameter bipartite}
+#| code-fold: false
+K = 3;  # nb of blocks
+L = 4
+nbNodes  <- c(50,80) # nb of vertices 
+blockProp <- list(row = c(.25, 0.5 ,.25),col=c(0.1,0.3,0.4,0.2)) # group proportions
+alpha <- matrix(0.2, K, L)  # connectivity matrix
+alpha[1,1] = 0.4
+alpha[1,2] = 0.1
+alpha[1,3] = 0.5
+alpha[1,4] = 0.01
+alpha[2,1] = 0.3
+alpha[2,3] = alpha[2,4] = 0.6
+alpha[3,1] = alpha[3,4] = 0.05
+
+
+
+
+connectParam <- list(mean = alpha)
+myBipartiteNet <- sampleBipartiteSBM(nbNodes, blockProp = blockProp, connectParam = connectParam , model = 'bernoulli', dimLabels = c('pollinators','plants'))
+plot(myBipartiteNet)
+
+```
+
+## 3.2 Ex: simulation of a 🌼-🐝 network 🧪🔥🔥
+
+Use the function `sampleBipartiteSBM` to to simulate a bipartite network featuring specialists, generalists, and strong embeddedness.
+
+# 4. Fitting a SBM by VEM
+
+After having simulated more or less complexe networks, we now propose to fit the SBM.
+
+::: callout-note
+As explained in the course: 1/ The parameters are estimated by maximizing a lower bound of the likelihood. 2/ The clustering of the nodes is recovered by selecting the most probable clustering a posteriori. 3/ The number of blocks is determined using a penalized likelihood criterion.
+:::
+
+## 4.1 Codes for inference
+
+### 4.1.a Estimation and model selection
+
+The inference task is performed with the function `estimateSampleSBM` of the packages `sbm` and `blockmodels`.
+
+```{r estim sim simple, eval=TRUE}
+#| code-fold: false
+res_estim <- estimateSimpleSBM(netMat = mySimNet$networkData,model = "bernoulli",
+                    dimLabels ='species', 
+                    estimOptions = list(verbosity = 0))
+                                        
+```
+
+The algorithm aims to identify the optimal number of blocks $K$. It explores the space of candidate models through a forward–backward procedure and generates multiple initializations for the VEM algorithm.
+
+::: callout-tip
+The progression of this search can be visualized in the plots produced during the estimation process by setting the argument `estimOptions = list(plot = 1)`.
+:::
+
+By default, the best model in terms of Integrated Classification Likelihood (ICL) is sent back. In fact, all the model are stored internally. The user can have a quick glance at them via the `$storedModels` field:
+
+```{r simpleSBM storedModel}
+#| code-fold: false
+res_estim$storedModels %>%  
+  ggplot() + 
+  aes(x = nbBlocks, y = ICL) + geom_line() + geom_point(alpha = 0.5) + geom_vline(xintercept = res_estim$storedModels$nbBlocks[which.max(res_estim$storedModels$ICL)],color = "red")
+```
+
+### 4.1.b Output of the estimation
+
+The estimated objects can be obtained as follows:
+
+```{r simpleSBMfit res}
+#| code-fold: false
+res_estim$blockProp
+res_estim$connectParam
+res_estim$memberships
+```
+
+::: callout-note
+Note that in this particular case, where we estimate the structure of a simulated network, we can compare the true clustering with the estimated one. In this case, the Adjusted Rand Index (ARI) is equal to $1$ (or approximately $1$), although the block labels may be permuted. This is due to the **label switching** phenomenon: the labels of the blocks are not identifiable and can be arbitrarily reordered without affecting the clustering structure.
+:::
+
+```{r simpleSBMfit clust}
+#| code-fold: false
+table(res_estim$memberships, mySimNet$memberships)
+```
+
+However the ARI is perfect:
+
+```{r simpleSBMfit sim ARI, eval=TRUE}
+#| code-fold: false
+adjustedRandIndex(res_estim$memberships, mySimNet$memberships)
+```
+
+### 4.1.c Displaying results
+
+The default plot function represents the network data reordered according to the memberships estimated in the SBM. One can also plot the expected network which, in case of the Bernoulli model, corresponds to the probability of connection between any pair of nodes in the network.
+
+```{r simpleSBMfit plot1}
+#| code-fold: false
+plot(res_estim, type = "data", dimLabels = list(row = 'species', col = 'species')) | 
+plot(res_estim, type = "expected",estimOptions=list(legend=TRUE))
+```
+
+::: callout-tip
+If one wants to follow the analysis with a different number of blocks (for instance $K=4$), the user can update the current `simpleSBMfit` thanks to the `setModel` method:
+
+```{r simpleSBMfit changeModel}
+#| code-fold: false
+res_estim$setModel(4)
+res_estim$nbBlocks
+res_estim$setModel(3) # Going back to the best model
+```
+:::
+
+## 4.2 Exercices 🧪
+
+1.  When considering the so-called complex network, is the algorithm able to recover the blocks?
+
+```{r estim sim Complexe , eval=FALSE}
+#| code-summary: "Correction"
+res3 <- estimateSimpleSBM(mySimNet3$networkData)
+adjustedRandIndex(res3$memberships, mySimNet3$memberships)
+```
+
+::: callout-note
+Unlike community detection methods, SBM inference recovers clusters not by specifically searching for communities, but by identifying blocks of nodes that 'behave' similarly within the graph. In this sense, SBM inference is agnostic.
+:::
+
+2.  Adapt the code to infer the bipartite networks you simulated
+
+```{r estim sim Biapartite , eval=FALSE}
+#| code-summary: "Correction"
+res_Bi <- estimateBipartiteSBM(myBipartiteNet$networkData,dimLabels = c(row = "pollinators", col = "plants"))
+adjustedRandIndex(myBipartiteNet$memberships$pollinators, res_Bi$memberships$pollinators)
+adjustedRandIndex(myBipartiteNet$memberships$plants, res_Bi$memberships$plants)
+```
+
+Check the quality of the results: display the reordered matrix, compare the clusterings.
