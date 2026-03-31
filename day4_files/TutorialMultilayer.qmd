@@ -1,0 +1,252 @@
+---
+title: "📊 Block models for  Multilayer networks"
+subtitle: "Tutorial based on the sbm package" 
+author: "Sophie Donnet for the Econet group"
+date: "April 2026"
+format:
+  html:
+    theme: cosmo      # moderne et clair
+    toc: true
+    toc-depth: 3
+    code-fold: true   # permet de replier les blocs de code
+    code-summary: "Show code"
+    secnumdepth: 2
+    smooth-scroll: true
+    highlight-style: github
+    df-print: paged
+    embed-resources: true
+editor: visual
+bibliography: references.bib
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+collapse = TRUE,
+comment = "#>"
+)
+```
+
+
+
+This tutorial illustrates the use of the block models on multilayer networks.
+
+# 0. Requirements
+
+The only package required for the analysis is `sbm`. `network` and `GGally` are required for one of the plots. 
+
+```{r setup, message=FALSE, warning=FALSE}
+#| code-fold: false
+library(sbm)
+library(network)
+library(GGally)
+
+```
+
+
+# 1. From bipartite to multipartite network
+
+First, we consider a Plant🌱-Ant🐜-Pollinator🐝 -Bird🦜 network which can be seen as a multipartite network, as defined in the course. 
+
+
+## 1.A Dattilo dataset
+
+The dataset --compiled and conducted by   @Dattilo  at Centro de Investigaciones Costeras La Mancha (CICOLMA), located on the central coast of the Gulf of Mexico, Veracruz, Mexico--
+ involves three general types of plant-animal mutualistic interaction:
+ pollination,  seed dispersal by frugivorous birds, and   protective mutualisms between ants and plants with extrafloral nectaries.
+
+
+The dataset --which is one of the largest compiled so far with respect
+to species richness, number of interactions and sampling effort--  includes  4 functional groups (FG), namely  plants, pollinator species (referred as floral visitors), ant species and frugivorous bird species. Three binary bipartite networks have been collected representing interactions between 
+
+  - 1/ plants and florals visitor, 🌱 - 🐝 
+  - 2/ plants and ants, 🌱 - 🐜 
+  - 3/ plants and seed dispersal birds 🌱 - 🦜
+
+resulting into three bipartite networks.   
+
+The FG are of respective sizes: $n_1 =  141$  plant 🌱  species,  $n_2 = 173$  pollinator 🐝 species, $n_3 = 46$ frugivorous bird 🦜 species and $n_4 = 30$  ant 🐜  species. 
+        
+The 3 networks contain   $753$  observed interactions of which $55\%$ are   plant-pollinator 🌱 - 🐝  interactions, $17\%$ are   plant-birds 🌱 - 🦜
+ interactions  and $28\%$ are plant-ant 🌱 - 🐜  interactions.
+
+```{r loading dataset, eval=TRUE}
+#| code-fold: false
+data(multipartiteEcologicalNetwork)
+str(multipartiteEcologicalNetwork)
+names(multipartiteEcologicalNetwork)
+Net <- multipartiteEcologicalNetwork
+```
+
+
+
+
+
+
+## 1.B Inference of multipartite network
+
+### From bipartite to multipartite
+
+As seen on Day 3, we could look for blocks of plants when they are interacting with ants, birds and pollinators separately and "compare" the blocks of plants? 
+
+```{r bipartite, eval  = FALSE, echo = TRUE}
+res_biSBM_plant_bird <- estimateBipartiteSBM(Net$Inc_plant_bird)
+res_biSBM_plant_pollinator <- estimateBipartiteSBM(Net$Inc_plant_flovis)
+res_biSBM_plant_ant <- estimateBipartiteSBM(Net$Inc_plant_ant)
+```
+
+However, plants are in interactions with all of them, so we would like to consider all the interactions at the same time. 
+
+
+
+### Formatting the data
+We format the data to be able to use our functions i.e. we transform the matrices into an list containing 
+
+  - *the matrix* itself,
+  - 'model': the distribution you want to fit on the network
+  - 'type' : `simple`   for simple network, "bipartite" if it is bipartite (it can be deduces from the size of the matrix) 
+  - 'dimLabels': the name of functional group in row and the name of functional group in column. 
+  
+The three created objects are gathered in a list. 
+
+To do so, we use the function `defineNetwork`. 
+```{r transform dataset,  eval=TRUE}
+#| code-fold: false
+type = "bipartite"
+model = "bernoulli"
+PlantFlovis <- defineSBM(netMat=Net$Inc_plant_flovis, model=model, dimLabels = c("Plants",
+    "Flovis"))
+PlantAnt <- defineSBM(netMat=Net$Inc_plant_ant, model=model, dimLabels = c("Plants",
+    "Ants"))
+PlantBird <- defineSBM(netMat = Net$Inc_plant_bird, model = model, dimLabels = c("Plants",
+    "Birds"))
+``` 
+
+::: callout-note
+To make it work, you must be sure to have exactly the same set of plants (in the same order) in each matrix. The `dimLabels` arguments specifies which group is in row or columns in the matrices you provide.  
+:::
+
+
+::: callout-tip
+If one wants to keep a track of the names of the species, they should be used as rownames and colnames in the matrices.
+:::
+
+
+
+
+```{r example of dataset, eval=TRUE}
+#| code-fold: false
+PlantFlovis$networkData[1:2, 1:2]
+```
+
+
+A plot of the data can be obtained with following command. 
+
+```{r plot data}
+#| code-fold: false
+plotMyMultipartiteMatrix(list(PlantFlovis, PlantAnt, PlantBird))
+```
+
+
+
+
+### Finding clusters in the 3 networks jointly
+
+We are now ready to  find block of species (based on @multipartite). 
+```{r eval = TRUE, echo = FALSE}
+load('res_Multipartite_BM_Dattilo.rda')
+```
+
+
+```{r eval = FALSE, echo=TRUE}
+#| code-fold: false
+data(multipartiteEcologicalNetwork)
+estimOptions = list(initBM = FALSE)
+listSBM <- list(PlantFlovis, PlantAnt, PlantBird)
+res_MSBM_dattilo <- estimateMultipartiteSBM(listSBM, estimOptions)
+```
+
+As yesterday, we can plot the results. 
+
+```{r }
+#| code-fold: false
+plot(res_MSBM_dattilo) 
+```
+
+
+```{r }
+#| code-fold: false
+plot(res_MSBM_dattilo, type = "expected")
+```
+
+
+
+
+# 2. Multiplex networks
+
+Assume that you have two (or more) networks involving the same species, but representing different interactions. For instance
+
+- Observations at different times (on the year, of the day or along time)
+- Different types of interactions : mutualistic and co-occurrence. 
+
+These networks can be bipartite or simple. We provide here a synthetic dataset, maybe you have one in mind. 
+
+
+```{r synthetic data}
+#| code-fold: false
+load(file='synthetic_multiplex.rda')
+dim(X1)
+dim(X2)
+
+```
+
+We provide a function to plot such a multiplex data. First the data must be formatted. 
+
+
+```{r synthetic data plot}
+#| code-fold: false
+SBM1 <-defineSBM(netMat = X1,model = "bernoulli",dimLabels =c('plant','polli') )
+SBM2 <-defineSBM(netMat = X2,model = "bernoulli",dimLabels =c('plant','polli') )
+plotMyMultiplexMatrix(list(SBM1,SBM2))
+``` 
+
+The blocks can be discovered as follows. 
+
+```{r synthetic data estim, eval = FALSE}
+#| code-fold: false
+res_Multiplex <- estimateMultiplexSBM(list(SBM1,SBM2), dependent = FALSE)
+``` 
+
+
+
+::: callout-note
+The argument `dependant = FALSE` means that, conditionally on $Z_i =k, W_j = \ell$, $X^1_{ij}$ and $X^2_{ij}$  are independent variables.  As a consequent, the model is: 
+\begin{eqnarray*}
+Z_i &\sim& \mathcal{C}at_K(\pi_1,\dots, \pi_K)\\
+W_j &\sim& \mathcal{C}at_L(\rho_1,\dots, \rho_L)\\
+X^1_{ij} \sim Z_i=k, W_j = \ell&\sim & \mathcal{B}ern(\alpha^1_{k\ell})\\
+X^2_{ij}\sim Z_i=k, W_j = \ell&\sim & \mathcal{B}ern(\alpha^2_{k\ell})
+\end{eqnarray*}
+If you have two simple binary networks, you can relax the assumption of independence, relying on @multiplexSBM.
+
+::: 
+
+
+You can plot the results as before by reordering the matrices 
+
+```{r, eval = FALSE, echo=TRUE}
+#| code-fold: false
+plot(res_Multiplex)
+plot(res_Multiplex,type='expected')
+```
+
+
+
+
+
+
+
+
+
+
+## References

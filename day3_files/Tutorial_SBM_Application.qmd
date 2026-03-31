@@ -312,15 +312,12 @@ df <- print_cluster(myBipartiteSBM$memberships$fungis, fungusTreeNetwork$fungus_
 knitr::kable(df, caption = "Fungi clusters")
 ```
 
-# 6. To go further 
+# 6. To go further
 
-
-Consider your preferred foodweb or plant-pollinator network (or the one from Day 2). Apply the sbm inference and compare the clusters to the ones introduced on Day 2. 
-
-
+Consider your preferred foodweb or plant-pollinator network (or the one from Day 2). Apply the sbm inference and compare the clusters to the ones introduced on Day 2.
 
 ```{r trophic}
 
-``` 
+```
 
 # References
