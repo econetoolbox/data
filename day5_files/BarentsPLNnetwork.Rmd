@@ -1,0 +1,206 @@
+---
+title: "Poisson log-normal model for fish species: network inference"
+author: S. Robin
+date: nov 2021
+output: html_document
+# output: pdf_document
+# geometry: margin=1.5cm
+# classoption: a4paper
+---
+
+## Data
+
+* $n =89$ stations (sites) in the Barents' sea
+* $m = 30$ fish species
+* $d = 4$ environmental covariates: latitude, longitude, depth, temperature
+
+```{r data, echo=TRUE}
+rm(list=ls()); set.seed(1)
+library(PLNmodels)
+data(barents)
+X <- as.matrix(cbind(barents$Latitude, barents$Longitude, barents$Depth, barents$Temperature)) 
+colnames(X) <- c('Latitude', 'Longitude', 'Depth', 'Temperature')
+Y <- as.matrix(barents$Abundance)
+```
+
+Scaling covariates (for numerical reasons) 
+
+```{r scale, echo=TRUE}
+X <- scale(X) 
+print(head(X))
+d <- ncol(X)
+Y <- Y[, which(colMeans(Y)>1)] 
+n <- nrow(Y); m <- ncol(Y) 
+print(m)
+print(head(Y[, 1:10]))
+```
+
+Removing too rare species
+
+```{r rare, echo=TRUE}
+X <- scale(X) 
+print(head(X))
+d <- ncol(X)
+Y <- Y[, which(colMeans(Y)>1)] 
+n <- nrow(Y); m <- ncol(Y) 
+print(m)
+print(head(Y[, 1:10]))
+```
+
+```{r plotFun, echo=FALSE, message=FALSE}
+library(fields)
+PlotCov <- function(fit, cluster=NULL){
+  if(is.null(cluster)){order <- 1:nrow(fit$model_par$Sigma)}else{order <- order(cluster)}
+  Sigma <- as.matrix(fit$model_par$Sigma)[order, order]; Sigma[which(Sigma==0)] <- NA
+  Omega <- -as.matrix(fit$model_par$Omega)[order, order]; Omega[which(Omega==0)] <- NA; diag(Omega) <- 1
+  par(mfrow=c(1, 2))
+  image.plot(1:m, 1:m, cov2cor(Sigma), xlab='species', ylab='species', main='correlations', zlim=c(-1, 1) <- )
+  abline(h=.5+cumsum(table(cluster)), v=.5+cumsum(table(cluster)))
+  image.plot(1:m, 1:m, cov2cor(Omega), xlab='species', ylab='species', main='conditional correlations', zlim=c(-1, 1))
+  abline(h=.5+cumsum(table(cluster)), v=.5+cumsum(table(cluster)))
+}
+library(sna)
+PlotNet <- function(fit, color=rep(1, nrow(fit$model_par$Omega))){
+  adj <- 1*(fit$model_par$Omega!=0)
+  gplot(adj, gmode='graph', vertex.col=color, vertex.border=color, edge.lwd=abs(fit$model_par$Omega), edge.col=8)
+}
+```
+
+## PLN model
+
+### Diagonal covariance matrix
+
+No interaction: $\Sigma$ (and therefore $\Omega$) diagonal
+
+```{r plnDiag, echo=TRUE, message=FALSE}
+plnDiag <- PLN(Y ~ X, control=PLN_param(trace=0, covariance='diagonal'))
+plnDiagCrit <- c(unlist(plnDiag$criteria), c(n_edges=0, EBIC=plnDiag$criteria$BIC, pen_loglik=plnDiag$criteria$loglik, density=0))
+print(plnDiagCrit)
+PlotCov(plnDiag)
+```
+
+### Full covariance matrix
+
+All interactions: $\Sigma$ (and possibly $\Omega$) full
+
+```{r plnFull, echo=TRUE, message=FALSE}
+plnFull <- PLN(Y ~ X, control=PLN_param(trace=0, covariance='full'))
+plnFullCrit <- c(unlist(plnFull$criteria), c(n_edges=m*(m-1)/2, EBIC=plnFull$criteria$BIC, pen_loglik=plnFull$criteria$loglik, density=1))
+print(plnFullCrit)
+PlotCov(plnFull)
+```
+
+### Abiotic effects 
+
+```{r abiotic, echo=TRUE, message=FALSE}
+cluster <- kmeans(t(plnFull$model_par$B[-1, ]), centers=4, iter.max=1e2, nstart=1e2)$cluster
+par(mfrow=c(1, 2))
+image.plot(1:d, 1:m, plnFull$model_par$B[-1, ], main='abiotic effects', xlab='covariates', ylab='species')
+text(1:d, rep(2, d), labels=substr(colnames(X), 1, 4), col=1)
+image.plot(1:d, 1:m, plnFull$model_par$B[-1, order(cluster)], main='species clustering', xlab='covariates', ylab='species')
+abline(h=.5+cumsum(table(cluster)), col=1, lwd=2)
+text(1:d, rep(2, d), labels=substr(colnames(X), 1, 4), col=1)
+```
+
+Reordering the covariance matrix 
+
+```{r plnFullOrdered, echo=TRUE, message=FALSE}
+PlotCov(plnFull, cluster=cluster)
+```
+
+## Network inference
+
+Few interactions: $\Omega$ sparse
+
+```{r net0, echo=TRUE, message=FALSE}
+plnNet <- PLNnetwork(Y ~ X, control=PLNnetwork_param(trace=0))
+plot(plnNet)
+```
+
+Extending the grid for the penalty parameter $\lambda$
+
+```{r net1, echo=TRUE, message=FALSE}
+lambda <- max(plnNet$penalties)^seq(-2, 1, length.out=50) 
+plnNet <- PLNnetwork(Y ~ X, penalties=lambda, control=PLNnetwork_param(trace=0))
+plot(plnNet)
+```
+grid
+
+### A first network
+
+```{r netBic, echo=TRUE, message=FALSE}
+netBic <- plnNet$getBestModel(crit='BIC')
+print(netBic$criteria)
+PlotCov(netBic)
+par(mfrow=c(1, 2))
+plot(netBic)
+PlotNet(netBic, color=cluster)
+```
+
+### Stability selection
+
+Resampling procedure to assess edge robustness
+
+```{r netStab, echo=TRUE, message=FALSE}
+stability_selection(plnNet)
+netStab <- plnNet$getBestModel(crit='StARS')
+print(netStab$criteria)
+PlotCov(netStab)
+par(mfrow=c(1, 2))
+plot(netStab)
+PlotNet(netStab, color=cluster)
+```
+
+## Model comparison
+
+```{r models, echo=TRUE, message=FALSE}
+print(rbind(plnDiag = plnDiagCrit, 
+            plnFull = plnFullCrit,
+            netBic = netBic$criteria, 
+            netStab = netStab$criteria))
+```
+
+Comparing estimated abiotic effects
+
+```{r abioticCompar, echo=TRUE, message=FALSE}
+abiotic = cbind(plnDiag = as.vector(plnDiag$model_par$B[-1, ]), 
+            plnFull = as.vector(plnFull$model_par$B[-1, ]),
+            netBic = as.vector(netBic$model_par$B[-1, ]), 
+            netStab = as.vector(netStab$model_par$B[-1, ]))
+plot(as.data.frame(abiotic), pch=20)
+```
+
+## Not accounting for environmental covariates
+
+### PLN model
+
+```{r plnNoCovar, echo=TRUE, message=FALSE}
+plnNoCovar <- PLN(Y ~ 1, control=PLN_param(trace=0))
+PlotCov(plnNoCovar)
+PlotCov(plnNoCovar, cluster=cluster)
+plnNoCovarCrit <- c(unlist(plnNoCovar$criteria), 
+                    c(n_edges=m*(m-1)/2, EBIC=plnNoCovar$criteria$BIC,
+                      pen_loglik=plnNoCovar$criteria$loglik, density=0))
+```
+
+### Network inference
+
+```{r netNoCovar, echo=TRUE, message=FALSE}
+lambda <- max(plnNet$penalties)^seq(-4, 1, length.out=50) 
+plnNetNoCovar <- PLNnetwork(Y ~ 1, penalties=lambda, control=PLNnetwork_param(trace=0))
+plot(plnNetNoCovar)
+netNoCovarBic <- plnNetNoCovar$getBestModel(crit='BIC')
+PlotCov(netNoCovarBic, cluster=cluster)
+stability_selection(plnNetNoCovar)
+netNoCovarStab <- plnNetNoCovar$getBestModel(crit='StARS')
+PlotCov(netNoCovarStab, cluster=cluster)
+```
+
+### Network comparison
+
+```{r networks, echo=TRUE, message=FALSE}
+print(rbind(netBic = netBic$criteria, 
+            netNoCovarBic = netNoCovarBic$criteria, 
+            netStab = netStab$criteria, 
+            netNoCovarStab = netNoCovarStab$criteria))
+```
